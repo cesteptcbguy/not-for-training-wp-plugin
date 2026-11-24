@@ -309,12 +309,69 @@ function notfortraining_physical_robots_paths() {
  * @return bool
  */
 function notfortraining_has_physical_robots() {
+	return null !== notfortraining_physical_robots_path();
+}
+
+/**
+ * The physical robots.txt at the site root, if there is one.
+ *
+ * @return string|null Absolute path.
+ */
+function notfortraining_physical_robots_path() {
 	foreach ( notfortraining_physical_robots_paths() as $path ) {
 		if ( is_file( $path ) ) {
-			return true;
+			return $path;
 		}
 	}
-	return false;
+	return null;
+}
+
+/**
+ * Normalize robots.txt text for comparison: LF line endings, no trailing
+ * whitespace on any line, runs of blank lines collapsed to one (they mean
+ * nothing to crawlers), no trailing blank lines.
+ *
+ * @param string $text Text.
+ * @return string
+ */
+function notfortraining_normalize_robots_text( $text ) {
+	$lines = array_map( 'rtrim', preg_split( '/\r\n|\r|\n/', (string) $text ) );
+	$text  = preg_replace( '/\n{3,}/', "\n\n", implode( "\n", $lines ) );
+	return rtrim( (string) $text );
+}
+
+/**
+ * Cut the plugin's block out of robots.txt text: from the marker line
+ * through as many blank-line-separated chunks as the current block has
+ * (the marker and its first group, then each further group).
+ *
+ * @param string $text robots.txt text.
+ * @return string|null The block, normalized; null if there's no marker line.
+ */
+function notfortraining_extract_robots_block( $text ) {
+	$lines = explode( "\n", notfortraining_normalize_robots_text( $text ) );
+	$start = array_search( notfortraining_robots_marker(), $lines, true );
+	if ( false === $start ) {
+		return null;
+	}
+
+	$expected = notfortraining_normalize_robots_text( notfortraining_robots_block() );
+	$chunks   = max( 1, count( preg_split( '/\n\s*\n/', $expected ) ) );
+
+	// Blank lines are single after normalizing, so each one ends a chunk.
+	$block = array();
+	$seen  = 1;
+	$count = count( $lines );
+	for ( $i = $start; $i < $count; $i++ ) {
+		if ( '' === $lines[ $i ] ) {
+			if ( $seen >= $chunks ) {
+				break;
+			}
+			++$seen;
+		}
+		$block[] = $lines[ $i ];
+	}
+	return implode( "\n", $block );
 }
 
 /**
@@ -378,17 +435,46 @@ function notfortraining_check_robots_served( array $context ) {
 		return notfortraining_status_result( $id, 'info', 'subdirectory', __( 'Your site is in a subfolder, so robots.txt is controlled by the main site at the top of your domain. Ask whoever runs it to add these rules.', 'not-for-training' ), 'copy_rules' );
 	}
 
+	$physical = notfortraining_physical_robots_path();
+	if ( null !== $physical ) {
+		return notfortraining_check_physical_robots( $id, (string) notfortraining_filesystem()->get_contents( $physical ) );
+	}
+
 	$response = $context['fetch']( 'robots' );
 	if ( $response && 200 === $response['code'] && notfortraining_robots_has_our_rules( $response['body'] ) ) {
 		return notfortraining_status_result( $id, 'ok', 'ok', __( 'AI rules are in your robots.txt.', 'not-for-training' ) );
-	}
-	if ( notfortraining_has_physical_robots() ) {
-		return notfortraining_status_result( $id, 'problem', 'physical_file', __( "Your site has its own robots.txt file, so the plugin can't add the AI rules. Remove that file, or ask your host or web person to paste these rules into it.", 'not-for-training' ), 'copy_rules' );
 	}
 	if ( ! $response ) {
 		return notfortraining_status_unknown( $id );
 	}
 	return notfortraining_status_result( $id, 'problem', 'replaced', __( "Your robots.txt doesn't include the AI rules. Another plugin, an SEO plugin's robots editor, or your host may be replacing it. Turn that off, or paste these rules there.", 'not-for-training' ), 'copy_rules' );
+}
+
+/**
+ * The result for a physical robots.txt, from its contents. The web server
+ * sends this file instead of WordPress's robots.txt, so the plugin can't
+ * change it:
+ *
+ * - No marker line: the AI rules aren't there (problem).
+ * - The marker and exactly the block the plugin would add now: the rules
+ *   are there but frozen, and won't follow plugin updates (info). Someone
+ *   pasted them in, or an SEO plugin saved WordPress's robots.txt as a
+ *   file (Yoast's "Create robots.txt file" does).
+ * - The marker with a different block: an old copy (warn).
+ *
+ * @param string $id       Check ID.
+ * @param string $contents File contents.
+ * @return array
+ */
+function notfortraining_check_physical_robots( $id, $contents ) {
+	$found = notfortraining_extract_robots_block( $contents );
+	if ( null === $found ) {
+		return notfortraining_status_result( $id, 'problem', 'physical_file', __( "Your site has its own robots.txt file, so the plugin can't add the AI rules. Remove that file, or ask your host or web person to paste these rules into it.", 'not-for-training' ), 'copy_rules' );
+	}
+	if ( notfortraining_normalize_robots_text( notfortraining_robots_block() ) === $found ) {
+		return notfortraining_status_result( $id, 'info', 'frozen_current', __( "Your AI rules are saved in a robots.txt file, so they won't update on their own. If this plugin updates its bot list, this line will tell you.", 'not-for-training' ) );
+	}
+	return notfortraining_status_result( $id, 'warn', 'frozen_stale', __( 'Your robots.txt file has an old copy of the AI rules. Replace that part of the file with these.', 'not-for-training' ), 'copy_rules' );
 }
 
 /**

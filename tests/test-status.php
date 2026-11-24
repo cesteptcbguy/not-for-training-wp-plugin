@@ -186,11 +186,86 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 	}
 
 	/**
-	 * A physical file that already holds our rules (pasted in) is fine.
+	 * Write the physical robots.txt.
+	 *
+	 * @param string $contents Contents.
 	 */
-	public function test_robots_served_physical_file_with_our_rules() {
-		file_put_contents( $this->root . '/robots.txt', $this->served_robots() );
-		$this->assertResult( 'ok', 'ok', $this->check( 'robots_served' ) );
+	private function physical_file( $contents ) {
+		file_put_contents( $this->root . '/robots.txt', $contents );
+	}
+
+	/**
+	 * A file holding exactly today's block: frozen_current, no request,
+	 * whatever is around it.
+	 */
+	public function test_robots_served_frozen_current() {
+		$block = notfortraining_robots_block();
+		$files = array(
+			'block only'                  => $block,
+			'what WordPress served'       => $this->served_robots(),
+			'Yoast-style, block first'    => $block . "\n# START YOAST BLOCK\nUser-agent: *\nDisallow:\n# END YOAST BLOCK\n",
+			'CRLF line endings'           => "User-agent: *\r\nDisallow:\r\n\r\n" . str_replace( "\n", "\r\n", $block ) . "\r\n",
+			'trailing spaces and blanks'  => preg_replace( '/$/m', "  \t", $block ) . "\n\n\n\nSitemap: https://example.org/sitemap.xml\n",
+			'double blank between groups' => str_replace( "Disallow: /\n\n#", "Disallow: /\n\n\n#", $block ),
+		);
+		foreach ( $files as $label => $contents ) {
+			$this->physical_file( $contents );
+			$this->requests = array();
+			$result         = $this->check( 'robots_served' );
+			$this->assertResult( 'info', 'frozen_current', $result );
+			$this->assertSame( "Your AI rules are saved in a robots.txt file, so they won't update on their own. If this plugin updates its bot list, this line will tell you.", $result['message'], $label );
+			$this->assertArrayNotHasKey( 'action', $result, $label );
+			$this->assertSame( array(), $this->requests, $label );
+		}
+	}
+
+	/**
+	 * A file holding a different block: frozen_stale, with the rules to
+	 * copy. Covers a mode change, a bot list change, a hand edit and a
+	 * truncated copy, with LF and CRLF.
+	 */
+	public function test_robots_served_frozen_stale() {
+		$training = notfortraining_robots_block( 'training' );
+		$all      = notfortraining_robots_block( 'all' );
+
+		$files = array(
+			'saved in "all" mode, now "training"' => $all,
+			'one bot fewer'                       => str_replace( "User-agent: Diffbot\n", '', $training ),
+			'hand-edited rule'                    => str_replace( "Allow: /\n", "Allow: /blog/\n", $training ),
+			'second group missing'                => substr( $training, 0, strpos( $training, "\n\n" ) ) . "\n",
+			'old copy with CRLF'                  => str_replace( "\n", "\r\n", $all ),
+		);
+		foreach ( $files as $label => $contents ) {
+			$this->physical_file( $contents );
+			$result = $this->check( 'robots_served' );
+			$this->assertResult( 'warn', 'frozen_stale', $result );
+			$this->assertSame( 'Your robots.txt file has an old copy of the AI rules. Replace that part of the file with these.', $result['message'], $label );
+			$this->assertSame( 'copy_rules', $result['action'], $label );
+		}
+
+		// A bot added to the list later makes a saved copy stale.
+		$this->physical_file( $training );
+		$this->assertResult( 'info', 'frozen_current', $this->check( 'robots_served' ) );
+		$add = static function ( $bots ) {
+			$bots['training'][] = 'NewTrainingBot';
+			return $bots;
+		};
+		add_filter( 'notfortraining_bots', $add );
+		$result = $this->check( 'robots_served' );
+		remove_filter( 'notfortraining_bots', $add );
+		$this->assertResult( 'warn', 'frozen_stale', $result );
+	}
+
+	/**
+	 * A file without the marker keeps the physical-file problem, even if it
+	 * happens to list some of the same bots.
+	 */
+	public function test_robots_served_physical_without_marker() {
+		$this->physical_file( str_replace( '# Not For Training', '# My own rules', notfortraining_robots_block() ) );
+		$this->assertResult( 'problem', 'physical_file', $this->check( 'robots_served' ) );
+
+		$this->physical_file( "User-agent: *\r\nDisallow:\r\n" );
+		$this->assertResult( 'problem', 'physical_file', $this->check( 'robots_served' ) );
 	}
 
 	/**
