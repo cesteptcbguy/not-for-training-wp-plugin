@@ -1,6 +1,6 @@
 === Not For Training ===
-Contributors: TODO-wporg-username
-Donate link: https://example.com/donate
+Contributors: cestep
+Donate link: https://buymeacoffee.com/cesteptcbguy
 Tags: ai, robots.txt, crawlers, copyright, privacy
 Requires at least: 6.5
 Tested up to: 7.1
