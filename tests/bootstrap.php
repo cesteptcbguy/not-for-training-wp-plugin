@@ -31,3 +31,4 @@ tests_add_filter(
 
 require $notfortraining_tests_dir . '/includes/bootstrap.php';
 require_once __DIR__ . '/class-notfortraining-testcase.php';
+require_once __DIR__ . '/class-notfortraining-exif-keeping-editor.php';
