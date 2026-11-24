@@ -33,6 +33,7 @@ require_once NOTFORTRAINING_DIR . 'includes/exif-gps.php';
 require_once NOTFORTRAINING_DIR . 'includes/heic-gps.php';
 require_once NOTFORTRAINING_DIR . 'includes/uploads.php';
 require_once NOTFORTRAINING_DIR . 'includes/save-friction.php';
+require_once NOTFORTRAINING_DIR . 'includes/compat.php';
 require_once NOTFORTRAINING_DIR . 'includes/status.php';
 require_once NOTFORTRAINING_DIR . 'includes/site-health.php';
 require_once NOTFORTRAINING_DIR . 'includes/admin/settings.php';
