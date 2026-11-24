@@ -52,9 +52,9 @@ jobs:
       - name: Pin WordPress and PHP versions
         run: |
           if [ "${{ matrix.wp }}" = "latest" ]; then CORE=null; else CORE='"WordPress/WordPress#${{ matrix.wp }}"'; fi
-          echo "{\"core\": $CORE, \"phpVersion\": \"${{ matrix.php }}\"}" > .wp-env.override.json
-          cat .wp-env.override.json
-      - run: npx wp-env start
+          echo "{\"core\": $CORE, \"phpVersion\": \"${{ matrix.php }}\"}" > .wp-env.tests.override.json
+          cat .wp-env.tests.override.json
+      - run: npm run env:start:tests
       - run: npm run test:php
 
   plugin-check:
