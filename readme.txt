@@ -164,8 +164,9 @@ Its settings are removed. Images it changed stay as they are.
 
 == Screenshots ==
 
-1. The settings page: AI bot rules, signals and image settings.
-2. The "Is it working?" status section, with plain-word results and the rules to copy.
+1. The settings page with the status check and AI bot rules.
+2. The "Is it working?" section with every check passing.
+3. Image settings: size cap, location data, and image saving.
 
 == Changelog ==
 
