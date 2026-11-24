@@ -22,17 +22,22 @@ defined( 'ABSPATH' ) || exit;
  * - strip_gps:        remove EXIF GPS from uploaded JPEGs.
  * - delete_originals: delete the uploaded original once WordPress has made
  *                     a scaled copy. Off by default: it can't be undone.
+ * - save_friction:    turn off dragging, the right-click menu and the
+ *                     long-press save sheet on images, for visitors.
+ * - save_friction_selectors: extra CSS selectors for save friction.
  *
  * @return array<string, mixed>
  */
 function notfortraining_defaults() {
 	return array(
-		'robots_mode'      => 'training',
-		'noai_signals'     => true,
-		'tdm_reservation'  => true,
-		'max_image_size'   => 1600,
-		'strip_gps'        => true,
-		'delete_originals' => false,
+		'robots_mode'             => 'training',
+		'noai_signals'            => true,
+		'tdm_reservation'         => true,
+		'max_image_size'          => 1600,
+		'strip_gps'               => true,
+		'delete_originals'        => false,
+		'save_friction'           => true,
+		'save_friction_selectors' => '',
 	);
 }
 
@@ -81,6 +86,10 @@ function notfortraining_sanitize_option( $key, $value ) {
 
 	if ( 'max_image_size' === $key ) {
 		return is_numeric( $value ) ? max( 0, (int) $value ) : $defaults['max_image_size'];
+	}
+
+	if ( 'save_friction_selectors' === $key ) {
+		return notfortraining_sanitize_selectors( $value );
 	}
 
 	if ( is_bool( $defaults[ $key ] ) ) {
@@ -132,7 +141,9 @@ function notfortraining_sanitize_settings( $input ) {
 	$size                    = ( is_int( $size ) || ( is_string( $size ) && ctype_digit( $size ) ) ) ? (int) $size : -1;
 	$clean['max_image_size'] = in_array( $size, notfortraining_image_size_choices(), true ) ? $size : $defaults['max_image_size'];
 
-	foreach ( array( 'noai_signals', 'tdm_reservation', 'strip_gps', 'delete_originals' ) as $key ) {
+	$clean['save_friction_selectors'] = notfortraining_sanitize_selectors( $input['save_friction_selectors'] ?? '' );
+
+	foreach ( array( 'noai_signals', 'tdm_reservation', 'strip_gps', 'delete_originals', 'save_friction' ) as $key ) {
 		$value = $input[ $key ] ?? null;
 		if ( true === $value || 1 === $value || '1' === $value ) {
 			$clean[ $key ] = true;

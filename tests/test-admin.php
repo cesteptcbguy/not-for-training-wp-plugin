@@ -114,12 +114,14 @@ class NotForTraining_Test_Admin extends NotForTraining_TestCase {
 	public function test_sanitize_accepts_valid_values() {
 		$this->assertSame(
 			array(
-				'robots_mode'      => 'all',
-				'noai_signals'     => false,
-				'tdm_reservation'  => true,
-				'max_image_size'   => 0,
-				'strip_gps'        => false,
-				'delete_originals' => true,
+				'robots_mode'             => 'all',
+				'noai_signals'            => false,
+				'tdm_reservation'         => true,
+				'max_image_size'          => 0,
+				'strip_gps'               => false,
+				'delete_originals'        => true,
+				'save_friction'           => true,
+				'save_friction_selectors' => '',
 			),
 			notfortraining_sanitize_settings(
 				array(

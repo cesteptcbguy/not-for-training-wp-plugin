@@ -141,6 +141,35 @@ function notfortraining_register_settings() {
 			'help'  => __( "WordPress normally also keeps your full-size file, at a web address anyone can guess. Turn this on only if your full-size files are saved somewhere else. Full-size files for images uploaded while this is on can't be brought back.", 'not-for-training' ),
 		)
 	);
+
+	add_settings_section( 'notfortraining_saving', __( 'Saving images', 'not-for-training' ), '__return_false', $page );
+	add_settings_field(
+		'notfortraining_save_friction',
+		__( 'Image saving', 'not-for-training' ),
+		'notfortraining_field_save_friction',
+		$page,
+		'notfortraining_saving'
+	);
+}
+
+/**
+ * The save_friction checkbox, with the custom selectors textarea under it.
+ */
+function notfortraining_field_save_friction() {
+	notfortraining_field_checkbox(
+		array(
+			'key'   => 'save_friction',
+			'label' => __( 'Make images harder to save', 'not-for-training' ),
+			'help'  => __( "Turns off dragging, right-click saving and the long-press save menu on phones. Anyone determined can still take a screenshot. You can still save your own images while you're logged in.", 'not-for-training' ),
+		)
+	);
+	?>
+	<p class="notfortraining-selectors">
+		<label for="notfortraining-save_friction_selectors"><?php esc_html_e( 'Extra images to cover', 'not-for-training' ); ?></label>
+		<textarea id="notfortraining-save_friction_selectors" name="notfortraining_settings[save_friction_selectors]" class="large-text code" rows="3" maxlength="500" aria-describedby="notfortraining-save_friction_selectors-help"><?php echo esc_textarea( (string) notfortraining_get_option( 'save_friction_selectors' ) ); ?></textarea>
+	</p>
+	<p class="description" id="notfortraining-save_friction_selectors-help"><?php esc_html_e( 'For web people. Leave this blank unless some images on your site aren\'t covered. Use CSS selectors, separated by commas.', 'not-for-training' ); ?></p>
+	<?php
 }
 
 /**
@@ -302,6 +331,8 @@ function notfortraining_settings_styles( $hook_suffix ) {
 		. '.notfortraining-copy-rules summary::-webkit-details-marker{display:none}'
 		. '.notfortraining-copy-rules textarea{display:block;margin-top:.6em;font-size:12px}'
 		. '.notfortraining-upload-hint{display:block;margin-top:.5em}'
+		. '.notfortraining-selectors{max-width:40em;margin-top:1.2em}'
+		. '.notfortraining-selectors label{display:block;margin-bottom:.3em;font-weight:600}'
 		. '.notfortraining-upload-hint code{word-break:break-all}'
 	);
 }
