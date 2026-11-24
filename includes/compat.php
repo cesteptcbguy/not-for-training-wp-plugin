@@ -1,9 +1,10 @@
 <?php
 /**
  * Compatibility shims for SEO plugins that print their own robots meta
- * tag (instead of core's wp_robots) or rebuild robots.txt. Each shim is
- * loaded only when its plugin is active, detected by that plugin's own
- * version constant once all plugins have loaded.
+ * tag (instead of core's wp_robots) or rebuild robots.txt, and for
+ * optimization plugins that delay scripts. Each shim is loaded only when
+ * its plugin is active, detected by that plugin's own version constant
+ * once all plugins have loaded.
  *
  * @package NotForTraining
  */
@@ -22,6 +23,7 @@ function notfortraining_compat_active() {
 		'rank-math' => defined( 'RANK_MATH_VERSION' ),
 		'aioseo'    => defined( 'AIOSEO_VERSION' ),
 		'seopress'  => defined( 'SEOPRESS_VERSION' ),
+		'litespeed' => defined( 'LSCWP_V' ),
 	);
 }
 

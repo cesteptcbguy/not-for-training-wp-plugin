@@ -710,6 +710,11 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 		$this->assertArrayNotHasKey( 'cache-control', $headers );
 		$this->assertArrayNotHasKey( 'pragma', $headers );
 
+		// A browser's Accept header: some page caches only serve cached
+		// pages to requests that accept text/html.
+		$this->assertStringStartsWith( 'text/html', $headers['accept'] );
+		$this->assertSame( array( 'accept' ), array_keys( $headers ), 'No other request headers.' );
+
 		// The cache-buster is still on the other two.
 		$this->requests = array();
 		$this->check( 'robots_served' );

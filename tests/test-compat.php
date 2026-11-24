@@ -15,7 +15,7 @@ class NotForTraining_Test_Compat extends NotForTraining_TestCase {
 	 * Load every shim's functions once (registration is per test).
 	 */
 	public static function wpSetUpBeforeClass() {
-		foreach ( array( 'rank-math', 'aioseo', 'seopress' ) as $shim ) {
+		foreach ( array( 'rank-math', 'aioseo', 'seopress', 'litespeed' ) as $shim ) {
 			require_once NOTFORTRAINING_DIR . 'includes/compat/' . $shim . '.php';
 		}
 	}
@@ -27,6 +27,7 @@ class NotForTraining_Test_Compat extends NotForTraining_TestCase {
 		notfortraining_compat_rank_math_unregister();
 		notfortraining_compat_aioseo_unregister();
 		notfortraining_compat_seopress_unregister();
+		notfortraining_compat_litespeed_unregister();
 		remove_all_actions( 'wp_head' );
 		parent::tear_down();
 	}
@@ -40,6 +41,7 @@ class NotForTraining_Test_Compat extends NotForTraining_TestCase {
 				'rank-math' => false,
 				'aioseo'    => false,
 				'seopress'  => false,
+				'litespeed' => false,
 			),
 			notfortraining_compat_active()
 		);
@@ -201,5 +203,32 @@ class NotForTraining_Test_Compat extends NotForTraining_TestCase {
 		$this->assertStringContainsString( "content='noai, noimageai'", get_echo( 'wp_robots' ) );
 
 		add_filter( 'wp_robots', 'wp_robots_max_image_preview_large' );
+	}
+
+	/**
+	 * LiteSpeed: the save friction script tag gets data-no-defer, so "Load
+	 * JS Delayed" can't hold it back; no other script tag changes.
+	 */
+	public function test_litespeed_no_defer() {
+		$this->assertFalse( has_filter( 'wp_inline_script_attributes', 'notfortraining_compat_litespeed_no_defer' ) );
+		notfortraining_compat_litespeed_register();
+
+		$ours = wp_get_inline_script_tag( 'var x = 1;', array( 'id' => 'notfortraining-save-friction-js-after' ) );
+		$this->assertStringContainsString( 'data-no-defer="1"', $ours );
+		$this->assertStringContainsString( 'id="notfortraining-save-friction-js-after"', $ours );
+
+		$other = wp_get_inline_script_tag( 'var y = 2;', array( 'id' => 'some-theme-js-after' ) );
+		$this->assertStringNotContainsString( 'data-no-defer', $other );
+
+		// The real tag, as the front end prints it.
+		wp_set_current_user( 0 );
+		$this->go_to( home_url( '/' ) );
+		// phpcs:disable WordPress.WP.GlobalVariablesOverride.Prohibited -- Fresh registries, as core's tests do.
+		$GLOBALS['wp_scripts'] = null;
+		$GLOBALS['wp_styles']  = null;
+		// phpcs:enable WordPress.WP.GlobalVariablesOverride.Prohibited
+		notfortraining_enqueue_save_friction();
+		$printed = wp_scripts()->get_inline_script_tag( 'notfortraining-save-friction', 'after' );
+		$this->assertMatchesRegularExpression( '#<script data-no-defer="1" id="notfortraining-save-friction-js-after">#', $printed );
 	}
 }

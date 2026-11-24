@@ -213,7 +213,10 @@ function notfortraining_is_subdirectory_install() {
  * cache in between for a fresh answer (robots.txt, tdmrep.json: is the
  * site producing the right thing?). Without it, the URL and headers are
  * what a visitor's browser sends, so a page cache answers as it would for
- * them (the homepage: are visitors getting the tags?).
+ * them (the homepage: are visitors getting the tags?). That includes a
+ * browser's Accept header: some page caches (Cache Enabler) only serve
+ * cached pages to requests that accept text/html, and cURL's default
+ * Accept header (any type) would get a fresh page instead.
  *
  * @param string $url          URL.
  * @param bool   $bypass_cache Ask caches for a fresh copy.
@@ -233,6 +236,8 @@ function notfortraining_status_fetch( $url, $bypass_cache = true ) {
 	if ( $bypass_cache ) {
 		$url             = add_query_arg( 'notfortraining-check', (string) wp_rand(), $url );
 		$args['headers'] = array( 'Cache-Control' => 'no-cache' );
+	} else {
+		$args['headers'] = array( 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' );
 	}
 	$response = wp_remote_get( $url, $args );
 	if ( is_wp_error( $response ) ) {
