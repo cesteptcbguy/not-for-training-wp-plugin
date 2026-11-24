@@ -325,7 +325,8 @@ function notfortraining_robots_has_our_rules( $text ) {
  *
  * Skipped when the AI bot rules are off, and when the site discourages
  * search engines (the plugin deliberately adds nothing then; search_open
- * reports that).
+ * reports that). On a subfolder install, robots.txt is read only at the
+ * domain root, which this WordPress doesn't control: info, no request.
  *
  * @param array $context Loopback context.
  * @return array|null
@@ -334,6 +335,9 @@ function notfortraining_check_robots_served( array $context ) {
 	$id = 'robots_served';
 	if ( 'off' === notfortraining_get_option( 'robots_mode' ) || '0' === (string) get_option( 'blog_public' ) ) {
 		return null;
+	}
+	if ( notfortraining_is_subdirectory_install() ) {
+		return notfortraining_status_result( $id, 'info', 'subdirectory', __( 'Your site is in a subfolder, so robots.txt is controlled by the main site at the top of your domain. Ask whoever runs it to add these rules.', 'not-for-training' ), 'copy_rules' );
 	}
 
 	$response = $context['fetch']( 'robots' );
@@ -374,10 +378,12 @@ function notfortraining_robots_group_blocks_all( $group ) {
 
 /**
  * 2. search_open: search engines can crawl the site. Always runs: it's
- * about the site, and never blames the plugin.
+ * about the site, and never blames the plugin. On a subfolder install only
+ * blog_public is checked: the robots.txt at the domain root belongs to the
+ * main site, so there's nothing to report when blog_public is 1.
  *
  * @param array $context Loopback context.
- * @return array
+ * @return array|null
  */
 function notfortraining_check_search_open( array $context ) {
 	$id      = 'search_open';
@@ -385,6 +391,9 @@ function notfortraining_check_search_open( array $context ) {
 
 	if ( '0' === (string) get_option( 'blog_public' ) ) {
 		return $blocked;
+	}
+	if ( notfortraining_is_subdirectory_install() ) {
+		return null;
 	}
 
 	$response = $context['fetch']( 'robots' );

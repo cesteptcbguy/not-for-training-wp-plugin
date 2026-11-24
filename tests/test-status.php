@@ -234,6 +234,37 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 		$this->assertNull( $this->check( 'robots_served' ) );
 	}
 
+	/**
+	 * Run a check with WordPress in a subfolder of its domain.
+	 *
+	 * @param string $id Check ID.
+	 * @return array|null
+	 */
+	private function check_in_subfolder( $id ) {
+		$home = static function () {
+			return 'http://example.org/blog';
+		};
+		add_filter( 'home_url', $home );
+		$this->requests = array();
+		$result         = $this->check( $id );
+		remove_filter( 'home_url', $home );
+		return $result;
+	}
+
+	/**
+	 * Subfolder install: info with the rules to hand over, no request, and
+	 * a physical file in the subfolder doesn't change that.
+	 */
+	public function test_robots_served_subdirectory() {
+		file_put_contents( $this->root . '/robots.txt', "User-agent: *\nDisallow:\n" );
+
+		$result = $this->check_in_subfolder( 'robots_served' );
+		$this->assertResult( 'info', 'subdirectory', $result );
+		$this->assertSame( 'copy_rules', $result['action'] );
+		$this->assertSame( 'Your site is in a subfolder, so robots.txt is controlled by the main site at the top of your domain. Ask whoever runs it to add these rules.', $result['message'] );
+		$this->assertSame( array(), $this->requests );
+	}
+
 	/*
 	 * 2. search_open.
 	 */
@@ -281,6 +312,20 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 		update_option( 'blog_public', '0' );
 		$this->responses['/robots.txt'] = $this->timeout();
 		$this->assertResult( 'problem', 'blocked', $this->check( 'search_open' ) );
+	}
+
+	/**
+	 * Subfolder install: blog_public still counts, robots.txt isn't read.
+	 */
+	public function test_search_open_subdirectory() {
+		$this->responses['/robots.txt'] = $this->ok( "User-agent: *\nDisallow: /\n" );
+
+		$this->assertNull( $this->check_in_subfolder( 'search_open' ) );
+		$this->assertSame( array(), $this->requests );
+
+		update_option( 'blog_public', '0' );
+		$this->assertResult( 'problem', 'blocked', $this->check_in_subfolder( 'search_open' ) );
+		$this->assertSame( array(), $this->requests );
 	}
 
 	/**
