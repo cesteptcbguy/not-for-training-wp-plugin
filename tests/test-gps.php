@@ -196,4 +196,144 @@ class NotForTraining_Test_Gps extends NotForTraining_TestCase {
 		$this->assertNotSame( $original, file_get_contents( $file ) );
 		$this->assertArrayNotHasKey( 'GPSLatitude', $this->exif( $file )['GPS'] ?? array() );
 	}
+
+	/**
+	 * APP1 segment bodies (after the length bytes) that start with $prefix.
+	 *
+	 * @param string $data   JPEG bytes.
+	 * @param string $prefix Segment identifier.
+	 * @return string[]
+	 */
+	private function app1_bodies( $data, $prefix ) {
+		$bodies = array();
+		$pos    = 2;
+		$len    = strlen( $data );
+		while ( $pos + 4 <= $len && "\xFF" === $data[ $pos ] && "\xDA" !== $data[ $pos + 1 ] ) {
+			$seg  = unpack( 'n', substr( $data, $pos + 2, 2 ) )[1];
+			$body = substr( $data, $pos + 4, $seg - 2 );
+			if ( "\xE1" === $data[ $pos + 1 ] && 0 === strpos( $body, $prefix ) ) {
+				$bodies[] = $body;
+			}
+			$pos += 2 + $seg;
+		}
+		return $bodies;
+	}
+
+	/**
+	 * The standard XMP packet of a file.
+	 *
+	 * @param string $file Path.
+	 * @return string
+	 */
+	private function xmp_packet( $file ) {
+		$bodies = $this->app1_bodies( file_get_contents( $file ), notfortraining_xmp_header() );
+		$this->assertCount( 1, $bodies );
+		return substr( $bodies[0], strlen( notfortraining_xmp_header() ) );
+	}
+
+	/**
+	 * GPS only in XMP: removed, and the result is byte for byte the fixture
+	 * that never had it. Rights, credit, creator, non-GPS exif:, EXIF
+	 * copyright, IPTC and the extended XMP segment all stay.
+	 */
+	public function test_xmp_gps_removed() {
+		$file     = $this->copy_fixture( 'xmp-gps.jpg' );
+		$expected = file_get_contents( __DIR__ . '/fixtures/xmp-nogps.jpg' );
+		$extended = $this->app1_bodies( file_get_contents( $file ), "http://ns.adobe.com/xmp/extension/\0" );
+
+		$this->assertStringContainsString( 'exif:GPS', $this->xmp_packet( $file ) );
+		$this->assertSame( 'stripped', notfortraining_strip_gps_jpeg_file( $file ) );
+		clearstatcache();
+
+		$this->assertSame( $expected, file_get_contents( $file ) );
+
+		$packet = $this->xmp_packet( $file );
+		$this->assertStringNotContainsString( 'exif:GPS', $packet );
+		$this->assertStringContainsString( '<rdf:li xml:lang="x-default">(c) 2026 Jane Doe. All rights reserved.</rdf:li>', $packet );
+		$this->assertStringContainsString( 'photoshop:Credit="Jane Doe Studio"', $packet );
+		$this->assertStringContainsString( '<rdf:li>Jane Doe</rdf:li>', $packet );
+		$this->assertStringContainsString( 'exif:ExposureTime="1/125"', $packet );
+		$this->assertStringContainsString( '<exif:UserComment>Not for AI training.</exif:UserComment>', $packet );
+		$this->assertNotFalse( simplexml_load_string( $packet ), 'XMP must still be well-formed.' );
+
+		$this->assertSame( $extended, $this->app1_bodies( file_get_contents( $file ), "http://ns.adobe.com/xmp/extension/\0" ), 'Extended XMP is left alone.' );
+		$this->assertSame( '(c) 2026 Jane Doe. All rights reserved.', $this->exif( $file )['IFD0']['Copyright'] );
+		$this->assertSame( array( 'Copyright 2026 Jane Doe' ), $this->iptc( $file )['2#116'] );
+		$this->assertSame( 8, getimagesize( $file )[0] );
+
+		$this->assertSame( 'none', notfortraining_strip_gps_jpeg_file( $file ) );
+	}
+
+	/**
+	 * GPS in EXIF and XMP: both go in one pass.
+	 */
+	public function test_exif_and_xmp_gps_removed() {
+		$file = $this->copy_fixture( 'both-gps.jpg' );
+		$this->assertArrayHasKey( 'GPSLatitude', $this->exif( $file )['GPS'] );
+
+		$this->assertSame( 'stripped', notfortraining_strip_gps_jpeg_file( $file ) );
+		clearstatcache();
+
+		$exif = $this->exif( $file );
+		$this->assertArrayNotHasKey( 'GPSLatitude', $exif['GPS'] ?? array() );
+		$this->assertSame( '(c) 2026 Jane Doe. All rights reserved.', $exif['IFD0']['Copyright'] );
+		$this->assertSame( $this->xmp_packet( __DIR__ . '/fixtures/xmp-nogps.jpg' ), $this->xmp_packet( $file ) );
+		$this->assertSame( array( 'Copyright 2026 Jane Doe' ), $this->iptc( $file )['2#116'] );
+		$this->assertNotFalse( imagecreatefromjpeg( $file ) );
+
+		$this->assertSame( 'none', notfortraining_strip_gps_jpeg_file( $file ) );
+	}
+
+	/**
+	 * XMP without GPS: file untouched.
+	 */
+	public function test_xmp_without_gps_untouched() {
+		$file     = $this->copy_fixture( 'xmp-nogps.jpg' );
+		$original = file_get_contents( $file );
+		$this->assertSame( 'none', notfortraining_strip_gps_jpeg_file( $file ) );
+		$this->assertSame( $original, file_get_contents( $file ) );
+	}
+
+	/**
+	 * Packet-level cases: both quote styles, ">" inside attribute values,
+	 * GPS-looking text outside tags is not an attribute.
+	 */
+	public function test_xmp_packet_rules() {
+		$in  = '<r:D a="1>2" exif:GPSLatitude="45N" b=\'x\' exif:GPSLongitude = \'122W\'/><dc:d>exif:GPSfake="text"</dc:d>';
+		$out = notfortraining_strip_gps_xmp( $in );
+		$this->assertSame( 'stripped', $out['status'] );
+		$this->assertSame( '<r:D a="1>2" b=\'x\'/><dc:d>exif:GPSfake="text"</dc:d>', $out['packet'] );
+
+		$in  = "<a>\n <exif:GPSImgDirection>90/1</exif:GPSImgDirection>\n <exif:GPSImgDirectionRef>M</exif:GPSImgDirectionRef>\n</a>";
+		$out = notfortraining_strip_gps_xmp( $in );
+		$this->assertSame( "<a>\n</a>", $out['packet'] );
+
+		$this->assertSame( 'none', notfortraining_strip_gps_xmp( '<a exif:Make="x"/>' )['status'] );
+	}
+
+	/**
+	 * A truncated XMP segment is an error and the bytes come back unchanged.
+	 */
+	public function test_truncated_xmp_is_error() {
+		$data = file_get_contents( __DIR__ . '/fixtures/xmp-gps.jpg' );
+		$cut  = substr( $data, 0, strpos( $data, notfortraining_xmp_header() ) + 100 );
+
+		$result = notfortraining_strip_gps_jpeg_data( $cut );
+		$this->assertSame( 'error', $result['status'] );
+		$this->assertSame( $cut, $result['data'] );
+	}
+
+	/**
+	 * Stripping keeps the file's permissions and leaves no temp file.
+	 */
+	public function test_permissions_kept() {
+		$file = $this->copy_fixture( 'both-gps.jpg' );
+		chmod( $file, 0640 );
+
+		$this->assertSame( 'stripped', notfortraining_strip_gps_jpeg_file( $file ) );
+		clearstatcache();
+
+		$this->assertSame( 0640, fileperms( $file ) & 0777 );
+		$this->assertFileDoesNotExist( $file . '.notfortraining-tmp' );
+	}
 }

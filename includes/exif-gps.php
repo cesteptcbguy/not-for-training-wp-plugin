@@ -1,13 +1,21 @@
 <?php
 /**
- * Remove EXIF GPS location from a JPEG in pure PHP, byte by byte, with no
- * image library involved: the image data is never decoded or re-encoded.
+ * Remove GPS location from a JPEG in pure PHP, byte by byte, with no image
+ * library involved: the image data is never decoded or re-encoded.
  *
- * The GPS IFD's entries, their out-of-line values and its next-IFD pointer
- * are zeroed and its entry count set to 0. That leaves an empty but valid
- * GPS IFD at the same offset, and the file the same length, so no other
- * offset in the file moves. Every other tag (Copyright, Artist, camera
- * data), IPTC, XMP and ICC profiles stay byte for byte.
+ * EXIF: the GPS IFD's entries, their out-of-line values and its next-IFD
+ * pointer are zeroed and its entry count set to 0. That leaves an empty but
+ * valid GPS IFD at the same offset, so no offset inside the EXIF block
+ * moves.
+ *
+ * XMP: every exif:GPS* property is cut out of the packet, as an attribute
+ * or as an element (including rdf:Seq / rdf:Alt values), and the segment
+ * length is rewritten. JPEG segments are length-prefixed with no offsets
+ * between them, so a shorter XMP segment moves nothing else.
+ *
+ * Every other EXIF tag (Copyright, Artist, camera data), all other XMP
+ * (dc:rights, photoshop:Credit, ...), IPTC and ICC profiles stay byte for
+ * byte.
  *
  * @package NotForTraining
  */
@@ -39,8 +47,21 @@ function notfortraining_strip_gps_jpeg_file( $file ) {
 	// Keep the file's own permissions. Passing them also avoids FS_CHMOD_FILE,
 	// which isn't defined outside wp-admin.
 	$mode = octdec( $fs->getchmod( $file ) );
+	$mode = $mode ? $mode : 0644;
 
-	return $fs->put_contents( $file, $result['data'], $mode ? $mode : 0644 ) ? 'stripped' : 'error';
+	// Write a sibling temp file, then rename it over the original, so a
+	// failed or interrupted write never leaves a half-written image.
+	$temp = $file . '.notfortraining-tmp';
+	if ( ! $fs->put_contents( $temp, $result['data'], $mode ) ) {
+		$fs->delete( $temp );
+		return 'error';
+	}
+	if ( ! $fs->move( $temp, $file, true ) ) {
+		$fs->delete( $temp );
+		return 'error';
+	}
+	$fs->chmod( $file, $mode );
+	return 'stripped';
 }
 
 /**
@@ -99,15 +120,29 @@ function notfortraining_strip_gps_jpeg_data( $data ) {
 			break;
 		}
 
+		$result = 'none';
 		if ( 0xE1 === $marker && $seg >= 16 && "Exif\0\0" === substr( $data, $pos + 4, 6 ) ) {
 			$result = notfortraining_clear_gps_ifd( $data, $pos + 10, $pos + 2 + $seg );
-			if ( 'error' === $result ) {
-				$status = 'error';
-				break;
-			}
-			if ( 'stripped' === $result ) {
-				$status = 'stripped';
-			}
+		} elseif ( 0xE1 === $marker && notfortraining_xmp_header() === substr( $data, $pos + 4, strlen( notfortraining_xmp_header() ) ) ) {
+			$result = notfortraining_strip_gps_xmp_segment( $data, $pos, $seg );
+			$len    = strlen( $data );
+		}
+
+		/*
+		 * Extended XMP (APP1 "http://ns.adobe.com/xmp/extension/") is left
+		 * alone. It's one slice of a larger packet, identified by an MD5 of
+		 * the whole packet and carrying offsets into it, so it can't be
+		 * edited slice by slice without rebuilding every slice and the GUID
+		 * the main packet points to. Few files have it; cameras and phones
+		 * don't write GPS there.
+		 */
+
+		if ( 'error' === $result ) {
+			$status = 'error';
+			break;
+		}
+		if ( 'stripped' === $result ) {
+			$status = 'stripped';
 		}
 
 		$pos += 2 + $seg;
@@ -124,6 +159,104 @@ function notfortraining_strip_gps_jpeg_data( $data ) {
 	return array(
 		'status' => $status,
 		'data'   => $data,
+	);
+}
+
+/**
+ * The identifier at the start of a standard XMP APP1 segment.
+ *
+ * @return string
+ */
+function notfortraining_xmp_header() {
+	return "http://ns.adobe.com/xap/1.0/\0";
+}
+
+/**
+ * Strip GPS from the XMP APP1 segment at $pos, in place, rewriting its
+ * length.
+ *
+ * @param string $data JPEG bytes, modified in place.
+ * @param int    $pos  Offset of the segment's 0xFF marker byte.
+ * @param int    $seg  Segment length (as stored: includes the 2 length
+ *                     bytes); updated to the new length.
+ * @return string "stripped", "none" or "error".
+ */
+function notfortraining_strip_gps_xmp_segment( &$data, $pos, &$seg ) {
+	$header = notfortraining_xmp_header();
+	$start  = $pos + 4 + strlen( $header );
+	$packet = substr( $data, $start, $seg - 2 - strlen( $header ) );
+
+	$result = notfortraining_strip_gps_xmp( $packet );
+	if ( 'stripped' !== $result['status'] ) {
+		return $result['status'];
+	}
+
+	$body = $header . $result['packet'];
+	if ( strlen( $body ) + 2 > 0xFFFF ) {
+		return 'error';
+	}
+
+	$data = substr( $data, 0, $pos + 2 ) . pack( 'n', strlen( $body ) + 2 ) . $body . substr( $data, $pos + 2 + $seg );
+	$seg  = strlen( $body ) + 2;
+	return 'stripped';
+}
+
+/**
+ * Remove every exif:GPS* property from an XMP packet.
+ *
+ * Element form, with or without content, including rdf:Seq / rdf:Alt
+ * values, and any whitespace before it:
+ *     <exif:GPSLatitude>45,31.2N</exif:GPSLatitude>
+ *     <exif:GPSAreaInformation><rdf:Alt>...</rdf:Alt></exif:GPSAreaInformation>
+ * Attribute form, with the whitespace before it, inside start tags only:
+ *     exif:GPSLatitude="45,31.2N"
+ *
+ * Everything else in the packet stays byte for byte.
+ *
+ * @param string $packet XMP packet.
+ * @return array{status: string, packet: string} Status "stripped", "none"
+ *               or "error"; packet unchanged unless stripped.
+ */
+function notfortraining_strip_gps_xmp( $packet ) {
+	$packet = (string) $packet;
+	if ( false === strpos( $packet, 'exif:GPS' ) ) {
+		return array(
+			'status' => 'none',
+			'packet' => $packet,
+		);
+	}
+
+	// One attribute: name="value" or name='value'. Values may hold ">".
+	$attribute = '\s+[^\s=\/>]+\s*=\s*(?:"[^"]*"|\'[^\']*\')';
+
+	// Elements first: their start tags can hold GPS attributes too.
+	$new = preg_replace(
+		'/\s*<(exif:GPS[A-Za-z0-9]*)(?:' . $attribute . ')*\s*(?:\/>|>.*?<\/\1\s*>)/s',
+		'',
+		$packet
+	);
+
+	// Then attributes, matched only inside start tags.
+	if ( null !== $new ) {
+		$new = preg_replace_callback(
+			'/<[A-Za-z_][^\s\/>]*(?:' . $attribute . ')*\s*\/?>/',
+			static function ( $tag ) {
+				return preg_replace( '/\s+exif:GPS[A-Za-z0-9]*\s*=\s*(?:"[^"]*"|\'[^\']*\')/', '', $tag[0] );
+			},
+			$new
+		);
+	}
+
+	if ( null === $new ) {
+		return array(
+			'status' => 'error',
+			'packet' => $packet,
+		);
+	}
+
+	return array(
+		'status' => $new === $packet ? 'none' : 'stripped',
+		'packet' => $new,
 	);
 }
 

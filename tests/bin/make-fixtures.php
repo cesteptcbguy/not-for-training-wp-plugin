@@ -10,6 +10,15 @@
  * little-endian (II) and big-endian (MM) byte order. plain.jpg has no
  * metadata at all.
  *
+ * XMP fixtures add a standard XMP APP1 packet (dc:rights, dc:creator,
+ * photoshop:Credit, a non-GPS exif property) and an extended XMP APP1
+ * segment that mentions GPS and must be left alone:
+ *
+ * - xmp-gps.jpg:    GPS in XMP only (EXIF has no GPS IFD).
+ * - xmp-nogps.jpg:  The same file without the XMP GPS properties. Stripping
+ *                   xmp-gps.jpg must produce exactly this file.
+ * - both-gps.jpg:   GPS in EXIF (big-endian) and in XMP.
+ *
  * @package NotForTraining
  */
 
@@ -148,6 +157,60 @@ function notfortraining_fx_iptc_segment() {
 	return "\xFF\xED" . pack( 'n', strlen( $body ) + 2 ) . $body;
 }
 
+/**
+ * The standard XMP APP1 segment. The GPS parts are spliced in exactly where
+ * a stripper removes them from (leading whitespace included), so the
+ * packet without GPS is the packet with GPS minus those spans.
+ *
+ * @param bool $with_gps Include exif:GPS* properties.
+ * @return string
+ */
+function notfortraining_fx_xmp_segment( $with_gps ) {
+	$gps_attributes = "\n    exif:GPSLatitude=\"45,31.2057N\"\n    exif:GPSLongitude='122,40.9463W'";
+	$gps_elements   = "\n   <exif:GPSAltitude>15/1</exif:GPSAltitude>"
+		. "\n   <exif:GPSVersionID>2.3.0.0</exif:GPSVersionID>"
+		. "\n   <exif:GPSAreaInformation>\n    <rdf:Alt>\n     <rdf:li xml:lang=\"x-default\">Portland, Oregon</rdf:li>\n    </rdf:Alt>\n   </exif:GPSAreaInformation>"
+		. "\n   <exif:GPSDestLatitude>\n    <rdf:Seq>\n     <rdf:li>45</rdf:li>\n     <rdf:li>31</rdf:li>\n    </rdf:Seq>\n   </exif:GPSDestLatitude>"
+		. "\n   <exif:GPSProcessingMethod note=\"a>b\" rdf:parseType='Resource'/>";
+
+	$packet = "<?xpacket begin=\"\xEF\xBB\xBF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n"
+		. "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n"
+		. " <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n"
+		. "  <rdf:Description rdf:about=\"\"\n"
+		. "    xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n"
+		. "    xmlns:photoshop=\"http://ns.adobe.com/photoshop/1.0/\"\n"
+		. "    xmlns:exif=\"http://ns.adobe.com/exif/1.0/\"\n"
+		. "    xmlns:xmpNote=\"http://ns.adobe.com/xmp/note/\"\n"
+		. '    photoshop:Credit="Jane Doe Studio"'
+		. ( $with_gps ? $gps_attributes : '' )
+		. "\n    exif:ExposureTime=\"1/125\"\n"
+		. "    xmpNote:HasExtendedXMP=\"0123456789ABCDEF0123456789ABCDEF\">\n"
+		. "   <dc:rights>\n    <rdf:Alt>\n     <rdf:li xml:lang=\"x-default\">(c) 2026 Jane Doe. All rights reserved.</rdf:li>\n    </rdf:Alt>\n   </dc:rights>"
+		. ( $with_gps ? $gps_elements : '' )
+		. "\n   <dc:creator>\n    <rdf:Seq>\n     <rdf:li>Jane Doe</rdf:li>\n    </rdf:Seq>\n   </dc:creator>\n"
+		. "   <exif:UserComment>Not for AI training.</exif:UserComment>\n"
+		. "  </rdf:Description>\n"
+		. " </rdf:RDF>\n"
+		. "</x:xmpmeta>\n"
+		. str_repeat( ' ', 64 ) . "\n"
+		. '<?xpacket end="w"?>';
+
+	$body = "http://ns.adobe.com/xap/1.0/\0" . $packet;
+	return "\xFF\xE1" . pack( 'n', strlen( $body ) + 2 ) . $body;
+}
+
+/**
+ * An extended XMP APP1 segment: GUID, full length, offset, then a slice of
+ * the extended packet. It mentions exif:GPS on purpose.
+ *
+ * @return string
+ */
+function notfortraining_fx_extended_xmp_segment() {
+	$slice = '<rdf:Description xmlns:exif="http://ns.adobe.com/exif/1.0/" exif:GPSLatitude="1,1N"><exif:GPSAltitude>9/1</exif:GPSAltitude></rdf:Description>';
+	$body  = "http://ns.adobe.com/xmp/extension/\0" . '0123456789ABCDEF0123456789ABCDEF' . pack( 'N', strlen( $slice ) ) . pack( 'N', 0 ) . $slice;
+	return "\xFF\xE1" . pack( 'n', strlen( $body ) + 2 ) . $body;
+}
+
 $notfortraining_image = imagecreatetruecolor( 8, 8 );
 imagefilledrectangle( $notfortraining_image, 0, 0, 7, 7, imagecolorallocate( $notfortraining_image, 200, 120, 40 ) );
 ob_start();
@@ -169,6 +232,24 @@ foreach ( array(
 	file_put_contents(
 		$notfortraining_dir . '/' . $notfortraining_name,
 		$notfortraining_head . notfortraining_fx_exif_segment( $notfortraining_args[0], $notfortraining_args[1] ) . notfortraining_fx_iptc_segment() . $notfortraining_tail
+	);
+	echo $notfortraining_name, "\n";
+}
+
+foreach ( array(
+	'xmp-gps.jpg'   => array( true, false, true ),
+	'xmp-nogps.jpg' => array( true, false, false ),
+	'both-gps.jpg'  => array( false, true, true ),
+) as $notfortraining_name => $notfortraining_args ) {
+	list( $notfortraining_le, $notfortraining_exif_gps, $notfortraining_xmp_gps ) = $notfortraining_args;
+	file_put_contents(
+		$notfortraining_dir . '/' . $notfortraining_name,
+		$notfortraining_head
+			. notfortraining_fx_exif_segment( $notfortraining_le, $notfortraining_exif_gps )
+			. notfortraining_fx_xmp_segment( $notfortraining_xmp_gps )
+			. notfortraining_fx_extended_xmp_segment()
+			. notfortraining_fx_iptc_segment()
+			. $notfortraining_tail
 	);
 	echo $notfortraining_name, "\n";
 }
