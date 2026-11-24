@@ -1,6 +1,7 @@
 <?php
 /**
- * Uninstall: remove the plugin's options, on every site of a network.
+ * Uninstall: remove the plugin's options, on every site of a network, and
+ * its user meta.
  * Uploaded files the plugin changed (GPS stripped, originals deleted) stay
  * as they are.
  *
@@ -15,7 +16,11 @@ defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 function notfortraining_uninstall_site() {
 	delete_option( 'notfortraining_settings' );
 	delete_option( 'notfortraining_rewrite_version' );
+	delete_option( 'notfortraining_setup_notice' );
 }
+
+// Notice dismissals are user meta, shared by every site of a network.
+delete_metadata( 'user', 0, 'notfortraining_notice_dismissed', '', true );
 
 if ( is_multisite() ) {
 	$notfortraining_site_ids = get_sites(

@@ -76,7 +76,7 @@ function notfortraining_sanitize_option( $key, $value ) {
 
 	if ( 'robots_mode' === $key ) {
 		$value = is_string( $value ) ? strtolower( $value ) : '';
-		return in_array( $value, array( 'training', 'all', 'off' ), true ) ? $value : $defaults['robots_mode'];
+		return in_array( $value, notfortraining_robots_modes(), true ) ? $value : $defaults['robots_mode'];
 	}
 
 	if ( 'max_image_size' === $key ) {
@@ -88,6 +88,63 @@ function notfortraining_sanitize_option( $key, $value ) {
 	}
 
 	return $value;
+}
+
+/**
+ * Allowed robots_mode values.
+ *
+ * @return string[]
+ */
+function notfortraining_robots_modes() {
+	return array( 'training', 'all', 'off' );
+}
+
+/**
+ * The image cap choices offered on the settings page, in px (0 = WordPress
+ * default).
+ *
+ * @return int[]
+ */
+function notfortraining_image_size_choices() {
+	return array( 1200, 1600, 2048, 0 );
+}
+
+/**
+ * Sanitize callback for the notfortraining_settings option (Settings API).
+ *
+ * Every key is validated on its own; anything missing or not a valid value
+ * falls back to its default. Unknown keys are dropped. Checkboxes on the
+ * settings page post "0" from a hidden field when unchecked and "1" when
+ * checked, so a missing key means "not submitted", not "off".
+ *
+ * @param mixed $input Submitted value.
+ * @return array<string, mixed> A complete, valid settings array.
+ */
+function notfortraining_sanitize_settings( $input ) {
+	$defaults = notfortraining_defaults();
+	$input    = is_array( $input ) ? $input : array();
+	$clean    = array();
+
+	$mode                 = isset( $input['robots_mode'] ) && is_string( $input['robots_mode'] ) ? sanitize_key( $input['robots_mode'] ) : '';
+	$clean['robots_mode'] = in_array( $mode, notfortraining_robots_modes(), true ) ? $mode : $defaults['robots_mode'];
+
+	$size                    = $input['max_image_size'] ?? null;
+	$size                    = ( is_int( $size ) || ( is_string( $size ) && ctype_digit( $size ) ) ) ? (int) $size : -1;
+	$clean['max_image_size'] = in_array( $size, notfortraining_image_size_choices(), true ) ? $size : $defaults['max_image_size'];
+
+	foreach ( array( 'noai_signals', 'tdm_reservation', 'strip_gps', 'delete_originals' ) as $key ) {
+		$value = $input[ $key ] ?? null;
+		if ( true === $value || 1 === $value || '1' === $value ) {
+			$clean[ $key ] = true;
+		} elseif ( false === $value || 0 === $value || '0' === $value ) {
+			$clean[ $key ] = false;
+		} else {
+			$clean[ $key ] = $defaults[ $key ];
+		}
+	}
+
+	// Same key order as the defaults.
+	return array_merge( $defaults, $clean );
 }
 
 /**

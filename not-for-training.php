@@ -31,18 +31,23 @@ require_once NOTFORTRAINING_DIR . 'includes/robots.php';
 require_once NOTFORTRAINING_DIR . 'includes/tdmrep.php';
 require_once NOTFORTRAINING_DIR . 'includes/exif-gps.php';
 require_once NOTFORTRAINING_DIR . 'includes/uploads.php';
+require_once NOTFORTRAINING_DIR . 'includes/admin/settings.php';
+require_once NOTFORTRAINING_DIR . 'includes/admin/notice.php';
 
 register_activation_hook( __FILE__, 'notfortraining_activate' );
 register_deactivation_hook( __FILE__, 'notfortraining_deactivate' );
 
 /**
  * Activation: register the tdmrep.json rule and flush, so the URL works
- * right away.
+ * right away, and queue the one-time setup notice. Settings aren't stored:
+ * until they're first saved, the defaults apply. A site that has saved its
+ * settings before ("done") doesn't see the notice again.
  */
 function notfortraining_activate() {
 	notfortraining_add_rewrite_rules();
 	flush_rewrite_rules( false );
 	update_option( 'notfortraining_rewrite_version', NOTFORTRAINING_REWRITE_VERSION, false );
+	add_option( 'notfortraining_setup_notice', 'pending', '', false );
 }
 
 /**

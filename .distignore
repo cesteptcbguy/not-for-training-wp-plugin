@@ -3,6 +3,7 @@
 /.github
 /.wordpress-org
 /bin
+/docs
 /build
 /node_modules
 /tests
