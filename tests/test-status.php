@@ -605,11 +605,43 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 		foreach ( $this->requests as $request ) {
 			list( $url, $args ) = $request;
 			$paths[]            = wp_parse_url( $url, PHP_URL_PATH );
-			$this->assertStringContainsString( 'notfortraining-check=', $url );
 			$this->assertSame( 5, $args['timeout'] );
 			$this->assertFalse( $args['sslverify'] );
 		}
 		$this->assertSame( array( '/robots.txt', '/', '/.well-known/tdmrep.json' ), $paths );
+
+		// robots.txt and tdmrep.json ask caches for a fresh copy.
+		foreach ( array( 0, 2 ) as $i ) {
+			list( $url, $args ) = $this->requests[ $i ];
+			$this->assertStringContainsString( 'notfortraining-check=', $url );
+			$this->assertSame( 'no-cache', $args['headers']['Cache-Control'] );
+		}
+	}
+
+	/**
+	 * The homepage is requested exactly as a visitor's browser would: the
+	 * plain home URL, no query string, no cache-busting headers. A page
+	 * cache then answers as it would for visitors.
+	 */
+	public function test_homepage_fetched_as_visitors_see_it() {
+		$this->check( 'noai_tag' );
+		$this->assertCount( 1, $this->requests );
+		list( $url, $args ) = $this->requests[0];
+
+		$this->assertSame( home_url( '/' ), $url );
+		$this->assertNull( wp_parse_url( $url, PHP_URL_QUERY ) );
+
+		$headers = array_change_key_case( (array) ( $args['headers'] ?? array() ) );
+		$this->assertArrayNotHasKey( 'cache-control', $headers );
+		$this->assertArrayNotHasKey( 'pragma', $headers );
+
+		// The cache-buster is still on the other two.
+		$this->requests = array();
+		$this->check( 'robots_served' );
+		$this->check( 'tdmrep' );
+		foreach ( $this->requests as $request ) {
+			$this->assertStringContainsString( 'notfortraining-check=', $request[0] );
+		}
 	}
 
 	/**

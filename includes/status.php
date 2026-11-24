@@ -154,7 +154,9 @@ function notfortraining_status_context() {
 	return array(
 		'fetch' => static function ( $key ) use ( &$cache ) {
 			if ( ! array_key_exists( $key, $cache ) ) {
-				$cache[ $key ] = notfortraining_status_fetch( notfortraining_status_url( $key ) );
+				// The homepage is fetched exactly as visitors get it, so a page
+				// cache serving an old copy is caught, not bypassed.
+				$cache[ $key ] = notfortraining_status_fetch( notfortraining_status_url( $key ), 'home' !== $key );
 			}
 			return $cache[ $key ];
 		},
@@ -205,27 +207,34 @@ function notfortraining_is_subdirectory_install() {
 }
 
 /**
- * One loopback GET, uncached by any page cache in between.
+ * One loopback GET.
  *
- * @param string $url URL.
+ * With $bypass_cache, a random query arg and a no-cache header ask every
+ * cache in between for a fresh answer (robots.txt, tdmrep.json: is the
+ * site producing the right thing?). Without it, the URL and headers are
+ * what a visitor's browser sends, so a page cache answers as it would for
+ * them (the homepage: are visitors getting the tags?).
+ *
+ * @param string $url          URL.
+ * @param bool   $bypass_cache Ask caches for a fresh copy.
  * @return array{code: int, body: string, headers: array}|null Null when the
  *         request failed, timed out, or got an answer that says nothing
  *         about the plugin (401, 407, 408, 429, 5xx).
  */
-function notfortraining_status_fetch( $url ) {
-	$url      = add_query_arg( 'notfortraining-check', (string) wp_rand(), $url );
-	$response = wp_remote_get(
-		$url,
-		array(
-			// Five seconds: the WP HTTP API runs requests one after another,
-			// so three loopbacks can take up to 15 seconds in all.
-			'timeout'     => 5,
-			'redirection' => 3,
-			/** This filter is documented in wp-includes/class-wp-http-streams.php */
-			'sslverify'   => apply_filters( 'https_local_ssl_verify', false ), // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core's filter for loopback requests, applied as Site Health does.
-			'headers'     => array( 'Cache-Control' => 'no-cache' ),
-		)
+function notfortraining_status_fetch( $url, $bypass_cache = true ) {
+	$args = array(
+		// Five seconds: the WP HTTP API runs requests one after another,
+		// so three loopbacks can take up to 15 seconds in all.
+		'timeout'     => 5,
+		'redirection' => 3,
+		/** This filter is documented in wp-includes/class-wp-http-streams.php */
+		'sslverify'   => apply_filters( 'https_local_ssl_verify', false ), // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core's filter for loopback requests, applied as Site Health does.
 	);
+	if ( $bypass_cache ) {
+		$url             = add_query_arg( 'notfortraining-check', (string) wp_rand(), $url );
+		$args['headers'] = array( 'Cache-Control' => 'no-cache' );
+	}
+	$response = wp_remote_get( $url, $args );
 	if ( is_wp_error( $response ) ) {
 		return null;
 	}
