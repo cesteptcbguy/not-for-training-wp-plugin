@@ -276,7 +276,7 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 			'core only'         => $this->ok( "User-agent: *\nDisallow: /wp-admin/\n" ),
 			'marker, no groups' => $this->ok( "# Not For Training\nUser-agent: *\nDisallow:\n" ),
 			'groups, no marker' => $this->ok( str_replace( '# Not For Training', '# Something else', $this->served_robots() ) ),
-			'404'               => array( 404, 'Not found', array() ),
+			'410'               => array( 410, 'Gone', array() ),
 		);
 		foreach ( $cases as $label => $response ) {
 			$this->responses['/robots.txt'] = $response;
@@ -284,6 +284,26 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 			$this->assertResult( 'problem', 'replaced', $result );
 			$this->assertSame( 'copy_rules', $result['action'], $label );
 		}
+	}
+
+	/**
+	 * A 404 with no physical file: the web server answers robots.txt itself.
+	 */
+	public function test_robots_served_server_404() {
+		$this->responses['/robots.txt'] = array( 404, '<html>404 Not Found</html>', array( 'server' => 'nginx' ) );
+		$result                         = $this->check( 'robots_served' );
+		$this->assertResult( 'problem', 'server_404', $result );
+		$this->assertSame( 'copy_rules', $result['action'] );
+		$this->assertSame( "Your web server answers robots.txt itself and never asks WordPress, so the AI rules can't be added. Ask your host to pass robots.txt to WordPress, or upload a robots.txt file with these rules.", $result['message'] );
+	}
+
+	/**
+	 * A 404 with a physical file present still reports the physical file.
+	 */
+	public function test_robots_served_404_with_physical_file() {
+		file_put_contents( $this->root . '/robots.txt', "User-agent: *\nDisallow:\n" );
+		$this->responses['/robots.txt'] = array( 404, 'Not found', array() );
+		$this->assertResult( 'problem', 'physical_file', $this->check( 'robots_served' ) );
 	}
 
 	/**
@@ -486,7 +506,6 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 	public function test_tdmrep_problem() {
 		$cases = array(
 			array( 404, 'Not found', array() ),
-			array( 403, 'Forbidden', array() ),
 			$this->ok( '<html>Home page</html>' ),
 			$this->ok( '[{"location":"/*","tdm-reservation":0}]' ),
 		);
@@ -496,6 +515,18 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 			$this->assertResult( 'problem', 'unreachable_file', $result );
 			$this->assertSame( 'download_tdmrep', $result['action'] );
 		}
+	}
+
+	/**
+	 * A 403: the web server blocks .well-known. No download: uploading the
+	 * file wouldn't get past the block.
+	 */
+	public function test_tdmrep_server_403() {
+		$this->responses['/.well-known/tdmrep.json'] = array( 403, '<html>403 Forbidden</html>', array( 'server' => 'nginx' ) );
+		$result                                      = $this->check( 'tdmrep' );
+		$this->assertResult( 'problem', 'server_403', $result );
+		$this->assertArrayNotHasKey( 'action', $result );
+		$this->assertSame( "Your web server blocks the .well-known folder, so the rights-reserved file can't be reached. Ask your host to allow /.well-known/tdmrep.json. The notice in your pages still works.", $result['message'] );
 	}
 
 	/**

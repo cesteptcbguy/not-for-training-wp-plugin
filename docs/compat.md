@@ -263,4 +263,4 @@ location ^~ /.well-known/ {
 
 The `^~` prefix makes nginx use the `/.well-known/` block for those paths without checking the regex locations, so the `location ~ /\.` deny rule no longer applies there. Where the block sits in the file doesn't matter.
 
-Possible follow-ups, not built: for a 404 robots.txt or a 403 tdmrep.json, the status messages could say that the web server isn't passing the request to WordPress, and point to these lines.
+The status check now names these cases. A 404 for robots.txt with no physical file reports "Your web server answers robots.txt itself and never asks WordPress..." (reason `server_404`, with the rules to copy). A 403 for tdmrep.json reports "Your web server blocks the .well-known folder..." (reason `server_403`, with no download, since an uploaded file would be blocked too). The readme's "My host uses nginx." FAQ points here.

@@ -453,6 +453,11 @@ function notfortraining_check_robots_served( array $context ) {
 	if ( ! $response ) {
 		return notfortraining_status_unknown( $id );
 	}
+	if ( 404 === $response['code'] ) {
+		// No file, yet not WordPress's robots.txt either: the web server
+		// answers /robots.txt itself (a common nginx setup).
+		return notfortraining_status_result( $id, 'problem', 'server_404', __( 'Your web server answers robots.txt itself and never asks WordPress, so the AI rules can\'t be added. Ask your host to pass robots.txt to WordPress, or upload a robots.txt file with these rules.', 'not-for-training' ), 'copy_rules' );
+	}
 	return notfortraining_status_result( $id, 'problem', 'replaced', __( "Your robots.txt doesn't include the AI rules. Another plugin, an SEO plugin's robots editor, or your host may be replacing it. Turn that off, or paste these rules there.", 'not-for-training' ), 'copy_rules' );
 }
 
@@ -611,6 +616,11 @@ function notfortraining_check_tdmrep( array $context ) {
 	$response = $context['fetch']( 'tdmrep' );
 	if ( ! $response ) {
 		return notfortraining_status_unknown( $id );
+	}
+	if ( 403 === $response['code'] ) {
+		// The web server refuses the folder (a common nginx rule denies every
+		// path starting with a dot). Uploading the file wouldn't help.
+		return notfortraining_status_result( $id, 'problem', 'server_403', __( 'Your web server blocks the .well-known folder, so the rights-reserved file can\'t be reached. Ask your host to allow /.well-known/tdmrep.json. The notice in your pages still works.', 'not-for-training' ) );
 	}
 	if ( 200 === $response['code'] && json_decode( $response['body'], true ) === notfortraining_tdmrep_data() ) {
 		return notfortraining_status_result( $id, 'ok', 'ok', __( 'Your rights-reserved notice is published.', 'not-for-training' ) );

@@ -142,6 +142,12 @@ Yes. The plugin adds its rules to WordPress's robots.txt, next to any rules your
 
 The plugin also adds its values to the same robots meta tag as your SEO plugin, instead of printing a second one.
 
+= My host uses nginx. =
+
+Some nginx setups answer robots.txt themselves and block the .well-known folder before WordPress ever sees the request. Then the AI rules can't be added to robots.txt, and the rights-reserved file can't be reached. The notice in your pages still works.
+
+The status check on Settings > Not For Training tells you when this happens. A host or web person can fix it with two small changes to the nginx config. The exact lines are in the "common nginx configs" section of [docs/compat.md](https://github.com/cesteptcbguy/not-for-training-wp-plugin/blob/main/docs/compat.md).
+
 = Does it work with page caching? =
 
 Mostly. The meta tags are saved in the cached page, so they still work. Response headers are only sent when WordPress builds the page. If a caching plugin serves pages straight from the web server, set the `X-Robots-Tag` and `tdm-reservation` headers in your server configuration too. The same goes for image files.
