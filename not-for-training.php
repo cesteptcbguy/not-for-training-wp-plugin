@@ -3,7 +3,7 @@
  * Plugin Name:       Not For Training
  * Plugin URI:        https://wordpress.org/plugins/not-for-training/
  * Description:       Opts your site out of AI training while staying findable in search and AI search: robots.txt groups for training crawlers, noai and TDM reservation signals, and a size cap and GPS stripping for uploaded images.
- * Version:           0.1.0
+ * Version:           0.1.0-beta.1
  * Requires at least: 6.5
  * Requires PHP:      7.4
  * Author:            Christopher Estep
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'NOTFORTRAINING_VERSION', '0.1.0' );
+define( 'NOTFORTRAINING_VERSION', '0.1.0-beta.1' );
 define( 'NOTFORTRAINING_FILE', __FILE__ );
 define( 'NOTFORTRAINING_DIR', plugin_dir_path( __FILE__ ) );
 
