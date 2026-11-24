@@ -43,25 +43,84 @@ function notfortraining_strip_gps_jpeg_file( $file ) {
 	if ( 'stripped' !== $result['status'] ) {
 		return $result['status'];
 	}
+	return notfortraining_write_file_atomic( $file, $result['data'] ) ? 'stripped' : 'error';
+}
 
-	// Keep the file's own permissions. Passing them also avoids FS_CHMOD_FILE,
-	// which isn't defined outside wp-admin.
+/**
+ * Replace a file's contents: write a sibling temp file, then rename it over
+ * the original, so a failed or interrupted write never leaves a
+ * half-written image. The file keeps its permissions.
+ *
+ * @param string $file Absolute path.
+ * @param string $data New contents.
+ * @return bool
+ */
+function notfortraining_write_file_atomic( $file, $data ) {
+	$fs = notfortraining_filesystem();
+
+	// Passing the mode also avoids FS_CHMOD_FILE, which isn't defined
+	// outside wp-admin.
 	$mode = octdec( $fs->getchmod( $file ) );
 	$mode = $mode ? $mode : 0644;
 
-	// Write a sibling temp file, then rename it over the original, so a
-	// failed or interrupted write never leaves a half-written image.
 	$temp = $file . '.notfortraining-tmp';
-	if ( ! $fs->put_contents( $temp, $result['data'], $mode ) ) {
+	if ( ! $fs->put_contents( $temp, $data, $mode ) ) {
 		$fs->delete( $temp );
-		return 'error';
+		return false;
 	}
 	if ( ! $fs->move( $temp, $file, true ) ) {
 		$fs->delete( $temp );
-		return 'error';
+		return false;
 	}
 	$fs->chmod( $file, $mode );
-	return 'stripped';
+	return true;
+}
+
+/**
+ * Which GPS stripper handles a file: by mime type when known, else by
+ * extension.
+ *
+ * @param string $file Path.
+ * @param string $mime Mime type, or "".
+ * @return string "jpeg", "heic" or "" (not handled).
+ */
+function notfortraining_gps_format( $file, $mime = '' ) {
+	$by_mime = array(
+		'image/jpeg'          => 'jpeg',
+		'image/heic'          => 'heic',
+		'image/heif'          => 'heic',
+		'image/heic-sequence' => 'heic',
+		'image/heif-sequence' => 'heic',
+	);
+	if ( '' !== $mime ) {
+		return $by_mime[ strtolower( $mime ) ] ?? '';
+	}
+	$by_extension = array(
+		'jpg'  => 'jpeg',
+		'jpeg' => 'jpeg',
+		'jpe'  => 'jpeg',
+		'heic' => 'heic',
+		'heif' => 'heic',
+		'hif'  => 'heic',
+	);
+	return $by_extension[ strtolower( pathinfo( $file, PATHINFO_EXTENSION ) ) ] ?? '';
+}
+
+/**
+ * Strip GPS from a file of a known format.
+ *
+ * @param string $file   Absolute path.
+ * @param string $format "jpeg" or "heic".
+ * @return string "stripped", "none" or "error".
+ */
+function notfortraining_strip_gps_file( $file, $format ) {
+	if ( 'jpeg' === $format ) {
+		return notfortraining_strip_gps_jpeg_file( $file );
+	}
+	if ( 'heic' === $format ) {
+		return notfortraining_strip_gps_heic_file( $file );
+	}
+	return 'none';
 }
 
 /**
@@ -213,11 +272,17 @@ function notfortraining_strip_gps_xmp_segment( &$data, $pos, &$seg ) {
  *
  * Everything else in the packet stays byte for byte.
  *
+ * With $blank, each match is overwritten with the same number of spaces
+ * instead of cut out, so the packet keeps its length (for HEIF items, whose
+ * sizes can't change). Whitespace between elements and inside start tags is
+ * still well-formed XML.
+ *
  * @param string $packet XMP packet.
+ * @param bool   $blank  Overwrite with spaces instead of removing.
  * @return array{status: string, packet: string} Status "stripped", "none"
  *               or "error"; packet unchanged unless stripped.
  */
-function notfortraining_strip_gps_xmp( $packet ) {
+function notfortraining_strip_gps_xmp( $packet, $blank = false ) {
 	$packet = (string) $packet;
 	if ( false === strpos( $packet, 'exif:GPS' ) ) {
 		return array(
@@ -229,10 +294,14 @@ function notfortraining_strip_gps_xmp( $packet ) {
 	// One attribute: name="value" or name='value'. Values may hold ">".
 	$attribute = '\s+[^\s=\/>]+\s*=\s*(?:"[^"]*"|\'[^\']*\')';
 
+	$cut = static function ( $found ) use ( $blank ) {
+		return $blank ? str_repeat( ' ', strlen( $found[0] ) ) : '';
+	};
+
 	// Elements first: their start tags can hold GPS attributes too.
-	$new = preg_replace(
+	$new = preg_replace_callback(
 		'/\s*<(exif:GPS[A-Za-z0-9]*)(?:' . $attribute . ')*\s*(?:\/>|>.*?<\/\1\s*>)/s',
-		'',
+		$cut,
 		$packet
 	);
 
@@ -240,8 +309,8 @@ function notfortraining_strip_gps_xmp( $packet ) {
 	if ( null !== $new ) {
 		$new = preg_replace_callback(
 			'/<[A-Za-z_][^\s\/>]*(?:' . $attribute . ')*\s*\/?>/',
-			static function ( $tag ) {
-				return preg_replace( '/\s+exif:GPS[A-Za-z0-9]*\s*=\s*(?:"[^"]*"|\'[^\']*\')/', '', $tag[0] );
+			static function ( $tag ) use ( $cut ) {
+				return preg_replace_callback( '/\s+exif:GPS[A-Za-z0-9]*\s*=\s*(?:"[^"]*"|\'[^\']*\')/', $cut, $tag[0] );
 			},
 			$new
 		);

@@ -73,22 +73,22 @@ function notfortraining_max_srcset_image_width( $max_width ) {
 }
 
 /**
- * Strip GPS from new JPEG uploads before any size is made from them, so no
- * published file says where a photo was taken. wp_handle_upload runs for
- * uploads, sideloads and wp_upload_bits() (media library, block editor,
- * importers).
+ * Strip GPS from new JPEG and HEIC/HEIF uploads before any size is made
+ * from them, so no published file says where a photo was taken.
+ * wp_handle_upload runs for uploads, sideloads and wp_upload_bits() (media
+ * library, block editor, importers).
  *
  * @param array{file?: string, url?: string, type?: string, error?: string} $upload Upload result.
  * @return array
  */
 function notfortraining_handle_upload_strip_gps( $upload ) {
-	if ( ! is_array( $upload ) || ! empty( $upload['error'] ) || empty( $upload['file'] ) ) {
+	if ( ! is_array( $upload ) || ! empty( $upload['error'] ) || empty( $upload['file'] ) || ! notfortraining_get_option( 'strip_gps' ) ) {
 		return $upload;
 	}
-	if ( 'image/jpeg' !== ( $upload['type'] ?? '' ) || ! notfortraining_get_option( 'strip_gps' ) ) {
-		return $upload;
+	$format = notfortraining_gps_format( $upload['file'], (string) ( $upload['type'] ?? '' ) );
+	if ( '' !== $format ) {
+		notfortraining_strip_gps_file( $upload['file'], $format );
 	}
-	notfortraining_strip_gps_jpeg_file( $upload['file'] );
 	return $upload;
 }
 
@@ -125,7 +125,9 @@ function notfortraining_delete_original_image( $metadata, $attachment_id, $conte
 
 /**
  * Second GPS pass, after WordPress has made every size: the main file, each
- * file in "sizes", and original_image if it's still on disk.
+ * file in "sizes", and original_image if it's still on disk. JPEGs and
+ * HEIC/HEIF files are handled; a HEIC original WordPress kept after
+ * converting it to JPEG is neutralized in place.
  *
  * The wp_handle_upload hook only sees the file as uploaded, so this catches what it
  * can't: HEIC (and other) uploads WordPress converts to JPEG while making
@@ -133,8 +135,8 @@ function notfortraining_delete_original_image( $metadata, $attachment_id, $conte
  * reached the library some other way. Runs after the original-deletion
  * filter (priority 10), so a deleted original is skipped.
  *
- * Non-JPEGs are skipped by extension and mime type without being read.
- * Already-clean JPEGs are read once and never written, so a second pass is
+ * Other formats are skipped by extension and mime type without being read.
+ * Already-clean files are read once and never written, so a second pass is
  * cheap and changes nothing.
  *
  * @param array  $metadata      Attachment metadata.
@@ -151,7 +153,7 @@ function notfortraining_strip_gps_generated_files( $metadata, $attachment_id, $c
 }
 
 /**
- * Strip GPS from every JPEG file of an attachment.
+ * Strip GPS from every JPEG and HEIC/HEIF file of an attachment.
  *
  * @param int   $attachment_id Attachment ID.
  * @param array $metadata      Attachment metadata.
@@ -181,24 +183,11 @@ function notfortraining_strip_gps_attachment_files( $attachment_id, array $metad
 
 	$results = array();
 	foreach ( $files as $file => $mime ) {
-		if ( ! notfortraining_is_jpeg_path( $file, $mime ) || ! is_file( $file ) ) {
+		$format = notfortraining_gps_format( $file, $mime );
+		if ( '' === $format || ! is_file( $file ) ) {
 			continue;
 		}
-		$results[ $file ] = notfortraining_strip_gps_jpeg_file( $file );
+		$results[ $file ] = notfortraining_strip_gps_file( $file, $format );
 	}
 	return $results;
-}
-
-/**
- * Whether a path is a JPEG, by mime type when known, else by extension.
- *
- * @param string $file Path.
- * @param string $mime Mime type from the metadata, or "".
- * @return bool
- */
-function notfortraining_is_jpeg_path( $file, $mime = '' ) {
-	if ( '' !== $mime ) {
-		return 'image/jpeg' === $mime;
-	}
-	return in_array( strtolower( pathinfo( $file, PATHINFO_EXTENSION ) ), array( 'jpg', 'jpeg', 'jpe' ), true );
 }

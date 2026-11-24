@@ -19,6 +19,22 @@
  *                   xmp-gps.jpg must produce exactly this file.
  * - both-gps.jpg:   GPS in EXIF (big-endian) and in XMP.
  *
+ * HEIF fixtures are structurally complete ISOBMFF files (ftyp, meta with
+ * hdlr, pitm, iinf, iref, iloc, then mdat) whose image item holds
+ * placeholder bytes: enough for any metadata reader, not decodable as a
+ * picture. Their Exif item carries Make, Model, Artist, Copyright, an Exif
+ * IFD with DateTimeOriginal and, in the gps files, a GPS IFD:
+ *
+ * - heic-gps-le.heic: iloc version 0, items in mdat by file offset,
+ *                     little-endian TIFF, plus an XMP item with GPS.
+ * - heic-gps-be.heic: iloc version 1, Exif in idat (construction method 1)
+ *                     with a base offset, big-endian TIFF, no XMP.
+ * - heic-nogps.heic:  as heic-gps-le.heic without any GPS.
+ *
+ * heic-source-gps.jpg and heic-source-nogps.jpg carry the same EXIF in a
+ * 64x48 JPEG: tests/bin/make-real-heic.sh turns them into real Apple-encoded
+ * HEICs (real-gps.heic, real-nogps.heic) with macOS sips.
+ *
  * @package NotForTraining
  */
 
@@ -158,6 +174,141 @@ function notfortraining_fx_iptc_segment() {
 }
 
 /**
+ * A TIFF structure with the full set of tags the HEIC tests check: IFD0
+ * (Make, Model, Artist, Copyright, Exif IFD pointer, GPS pointer), an Exif
+ * IFD (DateTimeOriginal), and a GPS IFD.
+ *
+ * @param bool $le       Little-endian.
+ * @param bool $with_gps Include a GPS IFD.
+ * @return string
+ */
+function notfortraining_fx_full_tiff( $le, $with_gps ) {
+	$strings = array(
+		0x010F => "TestCam\0",
+		0x0110 => "TC-1 Mark II\0",
+		0x013B => "Jane Doe\0",
+		0x8298 => "(c) 2026 Jane Doe. All rights reserved.\0",
+	);
+	$ifd0    = array();
+	foreach ( $strings as $tag => $value ) {
+		$ifd0[] = array( $tag, 2, strlen( $value ), $value );
+	}
+	$ifd0[] = array( 0x8769, 4, 1, notfortraining_fx_pack( 0, 4, $le ) );
+	if ( $with_gps ) {
+		$ifd0[] = array( 0x8825, 4, 1, notfortraining_fx_pack( 0, 4, $le ) );
+	}
+
+	$date        = "2026:11:20 14:05:09\0";
+	$exif        = array( array( 0x9003, 2, strlen( $date ), $date ) );
+	$exif_offset = 8 + strlen( notfortraining_fx_ifd( $ifd0, 8, $le ) );
+	$gps_offset  = $exif_offset + strlen( notfortraining_fx_ifd( $exif, $exif_offset, $le ) );
+
+	$ifd0[4][3] = notfortraining_fx_pack( $exif_offset, 4, $le );
+	if ( $with_gps ) {
+		$ifd0[5][3] = notfortraining_fx_pack( $gps_offset, 4, $le );
+	}
+
+	$tiff  = ( $le ? 'II' : 'MM' ) . notfortraining_fx_pack( 42, 2, $le ) . notfortraining_fx_pack( 8, 4, $le );
+	$tiff .= notfortraining_fx_ifd( $ifd0, 8, $le );
+	$tiff .= notfortraining_fx_ifd( $exif, $exif_offset, $le );
+	if ( $with_gps ) {
+		$gps   = array(
+			array( 0x0000, 1, 4, "\x02\x03\x00\x00" ),
+			array( 0x0001, 2, 2, "N\0" ),
+			array( 0x0002, 5, 3, notfortraining_fx_rationals( array( array( 45, 1 ), array( 31, 1 ), array( 1234, 100 ) ), $le ) ),
+			array( 0x0003, 2, 2, "W\0" ),
+			array( 0x0004, 5, 3, notfortraining_fx_rationals( array( array( 122, 1 ), array( 40, 1 ), array( 5678, 100 ) ), $le ) ),
+			array( 0x0006, 5, 1, notfortraining_fx_rationals( array( array( 15, 1 ) ), $le ) ),
+		);
+		$tiff .= notfortraining_fx_ifd( $gps, $gps_offset, $le );
+	}
+	return $tiff;
+}
+
+/**
+ * An ISOBMFF box.
+ *
+ * @param string $type    Four-character type.
+ * @param string $payload Contents.
+ * @return string
+ */
+function notfortraining_fx_box( $type, $payload ) {
+	return pack( 'N', 8 + strlen( $payload ) ) . $type . $payload;
+}
+
+/**
+ * An ISOBMFF full box (version and flags first).
+ *
+ * @param string $type    Four-character type.
+ * @param int    $version Version.
+ * @param string $payload Contents after version and flags.
+ * @return string
+ */
+function notfortraining_fx_fullbox( $type, $version, $payload ) {
+	return notfortraining_fx_box( $type, chr( $version ) . "\0\0\0" . $payload );
+}
+
+/**
+ * A HEIF file: image item 1 (placeholder bytes), Exif item 2, optional XMP
+ * item 3.
+ *
+ * @param string      $tiff         TIFF structure for the Exif item.
+ * @param string|null $xmp          XMP packet, or null for none.
+ * @param int         $iloc_version 0: every item in mdat by file offset.
+ *                                  1: Exif and XMP in idat, with a base offset.
+ * @return string
+ */
+function notfortraining_fx_heif( $tiff, $xmp, $iloc_version ) {
+	$image = str_repeat( "\xA5", 32 );
+	$exif  = pack( 'N', 6 ) . "Exif\0\0" . $tiff;
+
+	$ftyp = notfortraining_fx_box( 'ftyp', 'heic' . pack( 'N', 0 ) . 'mif1heic' );
+
+	$infe  = notfortraining_fx_fullbox( 'infe', 2, pack( 'nn', 1, 0 ) . "hvc1\0" );
+	$infe .= notfortraining_fx_fullbox( 'infe', 2, pack( 'nn', 2, 0 ) . "Exif\0" );
+	if ( null !== $xmp ) {
+		$infe .= notfortraining_fx_fullbox( 'infe', 2, pack( 'nn', 3, 0 ) . "mime\0application/rdf+xml\0" );
+	}
+	$items = null === $xmp ? 2 : 3;
+
+	$common = notfortraining_fx_fullbox( 'hdlr', 0, pack( 'N', 0 ) . 'pict' . str_repeat( "\0", 12 ) . "\0" )
+		. notfortraining_fx_fullbox( 'pitm', 0, pack( 'n', 1 ) )
+		. notfortraining_fx_fullbox( 'iinf', 0, pack( 'n', $items ) . $infe )
+		. notfortraining_fx_box( 'iref', "\0\0\0\0" . notfortraining_fx_box( 'cdsc', pack( 'nnn', 2, 1, 1 ) ) );
+
+	// Lay out with placeholder offsets first: every field is fixed-size, so
+	// the lengths don't change when the real offsets go in.
+	$build = static function ( $offsets ) use ( $iloc_version, $common, $items, $image, $exif, $xmp, $ftyp ) {
+		if ( 0 === $iloc_version ) {
+			$iloc  = pack( 'CC', 0x44, 0x00 ) . pack( 'n', $items );
+			$iloc .= pack( 'nnnNN', 1, 0, 1, $offsets[0], strlen( $image ) );
+			$iloc .= pack( 'nnnNN', 2, 0, 1, $offsets[1], strlen( $exif ) );
+			if ( null !== $xmp ) {
+				$iloc .= pack( 'nnnNN', 3, 0, 1, $offsets[2], strlen( $xmp ) );
+			}
+			$meta = notfortraining_fx_fullbox( 'meta', 0, $common . notfortraining_fx_fullbox( 'iloc', 0, $iloc ) );
+			return $ftyp . $meta . notfortraining_fx_box( 'mdat', $image . $exif . ( null === $xmp ? '' : $xmp ) );
+		}
+
+		// Version 1: offset 4, length 4, base offset 4, index 0. Exif sits
+		// in idat after 2 filler bytes, addressed as base 2 + offset 0.
+		$iloc  = pack( 'CC', 0x44, 0x40 ) . pack( 'n', $items );
+		$iloc .= pack( 'nnnNnNN', 1, 0, 0, 0, 1, $offsets[0], strlen( $image ) );
+		$iloc .= pack( 'nnnNnNN', 2, 1, 0, 2, 1, 0, strlen( $exif ) );
+		if ( null !== $xmp ) {
+			$iloc .= pack( 'nnnNnNN', 3, 1, 0, 0, 1, 2 + strlen( $exif ), strlen( $xmp ) );
+		}
+		$idat = notfortraining_fx_box( 'idat', "\0\0" . $exif . ( null === $xmp ? '' : $xmp ) );
+		$meta = notfortraining_fx_fullbox( 'meta', 0, $common . notfortraining_fx_fullbox( 'iloc', 1, $iloc ) . $idat );
+		return $ftyp . $meta . notfortraining_fx_box( 'mdat', $image );
+	};
+
+	$draft = $build( array( 0, 0, 0 ) );
+	$mdat  = strlen( $draft ) - ( strlen( $image ) + ( 0 === $iloc_version ? strlen( $exif ) + ( null === $xmp ? 0 : strlen( $xmp ) ) : 0 ) );
+	return $build( array( $mdat, $mdat + strlen( $image ), $mdat + strlen( $image ) + strlen( $exif ) ) );
+}
+
+/**
  * The standard XMP APP1 segment. The GPS parts are spliced in exactly where
  * a stripper removes them from (leading whitespace included), so the
  * packet without GPS is the packet with GPS minus those spans.
@@ -166,6 +317,17 @@ function notfortraining_fx_iptc_segment() {
  * @return string
  */
 function notfortraining_fx_xmp_segment( $with_gps ) {
+	$body = "http://ns.adobe.com/xap/1.0/\0" . notfortraining_fx_xmp_packet( $with_gps );
+	return "\xFF\xE1" . pack( 'n', strlen( $body ) + 2 ) . $body;
+}
+
+/**
+ * The XMP packet used in the JPEG and HEIF fixtures.
+ *
+ * @param bool $with_gps Include exif:GPS* properties.
+ * @return string
+ */
+function notfortraining_fx_xmp_packet( $with_gps ) {
 	$gps_attributes = "\n    exif:GPSLatitude=\"45,31.2057N\"\n    exif:GPSLongitude='122,40.9463W'";
 	$gps_elements   = "\n   <exif:GPSAltitude>15/1</exif:GPSAltitude>"
 		. "\n   <exif:GPSVersionID>2.3.0.0</exif:GPSVersionID>"
@@ -195,8 +357,7 @@ function notfortraining_fx_xmp_segment( $with_gps ) {
 		. str_repeat( ' ', 64 ) . "\n"
 		. '<?xpacket end="w"?>';
 
-	$body = "http://ns.adobe.com/xap/1.0/\0" . $packet;
-	return "\xFF\xE1" . pack( 'n', strlen( $body ) + 2 ) . $body;
+	return $packet;
 }
 
 /**
@@ -250,6 +411,37 @@ foreach ( array(
 			. notfortraining_fx_extended_xmp_segment()
 			. notfortraining_fx_iptc_segment()
 			. $notfortraining_tail
+	);
+	echo $notfortraining_name, "\n";
+}
+
+// HEIF fixtures.
+$notfortraining_heif = array(
+	'heic-gps-le.heic' => notfortraining_fx_heif( notfortraining_fx_full_tiff( true, true ), notfortraining_fx_xmp_packet( true ), 0 ),
+	'heic-gps-be.heic' => notfortraining_fx_heif( notfortraining_fx_full_tiff( false, true ), null, 1 ),
+	'heic-nogps.heic'  => notfortraining_fx_heif( notfortraining_fx_full_tiff( true, false ), notfortraining_fx_xmp_packet( false ), 0 ),
+);
+foreach ( $notfortraining_heif as $notfortraining_name => $notfortraining_bytes ) {
+	file_put_contents( $notfortraining_dir . '/' . $notfortraining_name, $notfortraining_bytes );
+	echo $notfortraining_name, "\n";
+}
+
+// Sources for tests/bin/make-real-heic.sh: the full EXIF in a 64x48 JPEG.
+$notfortraining_source = imagecreatetruecolor( 64, 48 );
+for ( $notfortraining_x = 0; $notfortraining_x < 64; $notfortraining_x++ ) {
+	imageline( $notfortraining_source, $notfortraining_x, 0, $notfortraining_x, 47, imagecolorallocate( $notfortraining_source, $notfortraining_x * 4, 120, 200 - $notfortraining_x * 3 ) );
+}
+ob_start();
+imagejpeg( $notfortraining_source, null, 90 );
+$notfortraining_source_jpeg = ob_get_clean();
+foreach ( array(
+	'heic-source-gps.jpg'   => true,
+	'heic-source-nogps.jpg' => false,
+) as $notfortraining_name => $notfortraining_gps ) {
+	$notfortraining_body = "Exif\0\0" . notfortraining_fx_full_tiff( true, $notfortraining_gps );
+	file_put_contents(
+		$notfortraining_dir . '/' . $notfortraining_name,
+		substr( $notfortraining_source_jpeg, 0, 2 ) . "\xFF\xE1" . pack( 'n', strlen( $notfortraining_body ) + 2 ) . $notfortraining_body . substr( $notfortraining_source_jpeg, 2 )
 	);
 	echo $notfortraining_name, "\n";
 }

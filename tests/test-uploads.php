@@ -238,10 +238,12 @@ class NotForTraining_Test_Uploads extends NotForTraining_TestCase {
 	 * Non-JPEG sizes and files are skipped; the setting turns the pass off.
 	 */
 	public function test_post_generation_pass_skips() {
-		$this->assertFalse( notfortraining_is_jpeg_path( '/x/a.heic' ) );
-		$this->assertFalse( notfortraining_is_jpeg_path( '/x/a.jpg', 'image/webp' ) );
-		$this->assertTrue( notfortraining_is_jpeg_path( '/x/a.JPEG' ) );
-		$this->assertTrue( notfortraining_is_jpeg_path( '/x/a.bin', 'image/jpeg' ) );
+		$this->assertSame( 'heic', notfortraining_gps_format( '/x/a.HEIC' ) );
+		$this->assertSame( 'heic', notfortraining_gps_format( '/x/a.bin', 'image/heif' ) );
+		$this->assertSame( '', notfortraining_gps_format( '/x/a.png' ) );
+		$this->assertSame( '', notfortraining_gps_format( '/x/a.jpg', 'image/webp' ) );
+		$this->assertSame( 'jpeg', notfortraining_gps_format( '/x/a.JPEG' ) );
+		$this->assertSame( 'jpeg', notfortraining_gps_format( '/x/a.bin', 'image/jpeg' ) );
 
 		$this->set_settings( array( 'strip_gps' => false ) );
 		list( $id, $meta ) = $this->upload_gps_image( true );

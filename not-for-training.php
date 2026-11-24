@@ -30,6 +30,7 @@ require_once NOTFORTRAINING_DIR . 'includes/options.php';
 require_once NOTFORTRAINING_DIR . 'includes/robots.php';
 require_once NOTFORTRAINING_DIR . 'includes/tdmrep.php';
 require_once NOTFORTRAINING_DIR . 'includes/exif-gps.php';
+require_once NOTFORTRAINING_DIR . 'includes/heic-gps.php';
 require_once NOTFORTRAINING_DIR . 'includes/uploads.php';
 require_once NOTFORTRAINING_DIR . 'includes/admin/settings.php';
 require_once NOTFORTRAINING_DIR . 'includes/admin/notice.php';
