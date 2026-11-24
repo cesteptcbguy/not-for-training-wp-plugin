@@ -62,6 +62,22 @@ When "Remove location data from new photos" is on:
 
 The image itself is never re-encoded. If a file looks damaged or unusual, the plugin leaves it alone.
 
+= Is it working? =
+
+The settings page checks your site. It tells you in plain words whether the AI rules, the no-AI tags and the rights-reserved notice are actually reaching visitors and crawlers.
+
+It catches the common problems:
+
+* A robots.txt file or an SEO plugin overriding the rules.
+* A saved robots.txt file with old rules.
+* A caching plugin serving old pages.
+* Search engines blocked by a setting.
+* A server that drops copyright info from resized images.
+
+When something's wrong, it says what to do. It gives you the rules to copy or the file to download.
+
+The main checks also show up in Tools > Site Health.
+
 = What it doesn't do yet =
 
 * It doesn't remove location data from PNG, WebP or AVIF files.
@@ -124,6 +140,11 @@ No. The size limit and location removal apply to new uploads only.
 = What happens when I delete the plugin? =
 
 Its settings are removed. Images it changed stay as they are.
+
+== Screenshots ==
+
+1. The settings page: AI bot rules, signals and image settings.
+2. The "Is it working?" status section, with plain-word results and the rules to copy.
 
 == Changelog ==
 
