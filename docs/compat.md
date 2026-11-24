@@ -109,3 +109,158 @@ Results on the dev site, each plugin on its own: cache the homepage with no-AI t
 
 - Cache Enabler names its settings file after the host without the port (`localhost.php`), but looks it up early in a request using the `Host` header with the port (`localhost:8888.php`). On wp-env's port 8888 it never cached until the file was also saved under the second name. Sites on ports 80 and 443 aren't affected.
 - Every plugin was removed afterwards, along with what its uninstall left behind: W3 Total Cache's `wp-content/cache` and `wp-content/w3tc-config`, WP Fastest Cache's `wp-content/cache` folders, and Cache Enabler's `WP_CACHE` block in `wp-config.php` and its `wp-content/settings` folder.
+
+## Imagick on DDEV
+
+Tested 2026-11-24 on a throwaway DDEV site (DDEV 1.25.3, nginx-fpm, PHP 8.3.31, WordPress 7.1.5), with the plugin mounted read-only from this repo. The site was deleted afterwards.
+
+**Image editor:** Imagick 3.8.1 with ImageMagick 7.1.1-43 Q16. It reads JPEG, HEIC, HEIF, AVIF and WebP. WordPress picked `WP_Image_Editor_Imagick` for JPEG, `wp_image_editor_supports( image/heic )` was true, and the status check's image editor line said OK ("Your server keeps copyright info in smaller copies of images.").
+
+### Test images
+
+Three 3000x2000 images, uploaded through Media Library > Add New (the browser uploader) as an admin. All carried EXIF Copyright and Artist, plus Make, Model and DateTimeOriginal.
+
+| File | GPS | Other copyright fields |
+| --- | --- | --- |
+| `big-gps-all.jpg` | EXIF GPS (latitude, longitude, altitude) | IPTC CopyrightNotice and By-line, XMP dc:rights and photoshop:Credit |
+| `xmp-gps-only.jpg` | XMP only (`exif:GPSLatitude`, `GPSLongitude`, `GPSAltitude`) | Same as above |
+| `heic-gps.heic` | EXIF GPS | XMP dc:rights and photoshop:Credit. No IPTC: macOS `sips` dropped it when converting from the JPEG, so it was never in the source. |
+
+Every file WordPress wrote was checked with ExifTool 13.55: the main file, each size, and `original_image` when kept. "GPS tags" counts EXIF GPS, XMP `exif:GPS*` and the composite GPS position.
+
+### Run 1: "Only keep the smaller copy" off (default)
+
+| Upload | Files | Largest generated | 2048 size | GPS tags in any file | Copyright fields |
+| --- | --- | --- | --- | --- | --- |
+| big-gps-all.jpg | `-scaled` 1600x1067, 1536x1024, 1024x683, 768x512, 300x200, 150x150, original 3000x2000 | 1600 | No | 0 | All six in every file |
+| xmp-gps-only.jpg | Same set | 1600 | No | 0 | All six in every file |
+| heic-gps.heic | JPEG `-scaled` 1600x1067 and the same sizes (WordPress converted it to JPEG), original `heic-gps.heic` kept | 1600 | No | 0 | EXIF Copyright and Artist, XMP rights and credit in every file (the source had no IPTC) |
+
+The kept originals had their GPS removed at upload too: the JPEGs by the byte-level EXIF and XMP strip, the HEIC by the in-place GPS IFD neutralization. `exiftool -validate` on the kept `heic-gps.heic`: OK.
+
+### Run 2: "Only keep the smaller copy" on
+
+The same three files, uploaded again (WordPress added `-1` to the names).
+
+| Upload | Files | Original on disk | `original_image` in metadata | GPS tags in any file | Copyright fields |
+| --- | --- | --- | --- | --- | --- |
+| big-gps-all.jpg | `-scaled` 1600x1067 and the five sizes, no 2048 | No (`big-gps-all-1.jpg` gone) | No | 0 | All six in every file |
+| xmp-gps-only.jpg | Same | No (`xmp-gps-only-1.jpg` gone) | No | 0 | All six in every file |
+| heic-gps.heic | JPEG `-scaled` 1600x1067 and the five sizes, no 2048 | No (`heic-gps-1.heic` gone) | No | 0 | EXIF Copyright and Artist, XMP rights and credit |
+
+### ExifTool output
+
+The tag list used: `-a -G1 -s -GPS:all -XMP-exif:GPS* -Composite:GPSPosition -IFD0:Copyright -IFD0:Artist -IPTC:CopyrightNotice -IPTC:By-line -XMP-dc:Rights -XMP-photoshop:Credit -Composite:ImageSize`, shown as `<tags>`. No GPS line appears in any output.
+
+Run 1:
+
+```
+$ exiftool <tags> wp-content/uploads/2026/11/big-gps-all-scaled.jpg
+[IFD0]          Copyright                       : (c) 2026 Jane Doe. All rights reserved.
+[IFD0]          Artist                          : Jane Doe
+[IPTC]          CopyrightNotice                 : Copyright 2026 Jane Doe
+[IPTC]          By-line                         : Jane Doe
+[XMP-dc]        Rights                          : (c) 2026 Jane Doe. All rights reserved.
+[XMP-photoshop] Credit                          : Jane Doe Studio
+[Composite]     ImageSize                       : 1600x1067
+
+$ exiftool <tags> wp-content/uploads/2026/11/big-gps-all-150x150.jpg
+[IFD0]          Copyright                       : (c) 2026 Jane Doe. All rights reserved.
+[IFD0]          Artist                          : Jane Doe
+[IPTC]          CopyrightNotice                 : Copyright 2026 Jane Doe
+[IPTC]          By-line                         : Jane Doe
+[XMP-dc]        Rights                          : (c) 2026 Jane Doe. All rights reserved.
+[XMP-photoshop] Credit                          : Jane Doe Studio
+[Composite]     ImageSize                       : 150x150
+
+$ exiftool <tags> wp-content/uploads/2026/11/big-gps-all.jpg
+[IFD0]          Copyright                       : (c) 2026 Jane Doe. All rights reserved.
+[IFD0]          Artist                          : Jane Doe
+[IPTC]          CopyrightNotice                 : Copyright 2026 Jane Doe
+[IPTC]          By-line                         : Jane Doe
+[XMP-dc]        Rights                          : (c) 2026 Jane Doe. All rights reserved.
+[XMP-photoshop] Credit                          : Jane Doe Studio
+[Composite]     ImageSize                       : 3000x2000
+
+$ exiftool <tags> wp-content/uploads/2026/11/xmp-gps-only-scaled.jpg
+[IFD0]          Copyright                       : (c) 2026 Jane Doe. All rights reserved.
+[IFD0]          Artist                          : Jane Doe
+[IPTC]          CopyrightNotice                 : Copyright 2026 Jane Doe
+[IPTC]          By-line                         : Jane Doe
+[XMP-dc]        Rights                          : (c) 2026 Jane Doe. All rights reserved.
+[XMP-photoshop] Credit                          : Jane Doe Studio
+[Composite]     ImageSize                       : 1600x1067
+
+$ exiftool <tags> wp-content/uploads/2026/11/heic-gps-scaled.jpg
+[IFD0]          Copyright                       : (c) 2026 Jane Doe. All rights reserved.
+[IFD0]          Artist                          : Jane Doe
+[XMP-dc]        Rights                          : (c) 2026 Jane Doe. All rights reserved.
+[XMP-photoshop] Credit                          : Jane Doe Studio
+[Composite]     ImageSize                       : 1600x1067
+
+$ exiftool <tags> wp-content/uploads/2026/11/heic-gps.heic
+[IFD0]          Copyright                       : (c) 2026 Jane Doe. All rights reserved.
+[IFD0]          Artist                          : Jane Doe
+[XMP-dc]        Rights                          : (c) 2026 Jane Doe. All rights reserved.
+[XMP-photoshop] Credit                          : Jane Doe Studio
+[Composite]     ImageSize                       : 3000x2000
+
+$ exiftool -validate -warning -error -a -G1 -s wp-content/uploads/2026/11/heic-gps.heic
+[ExifTool]      Validate                        : OK
+```
+
+Run 2:
+
+```
+$ exiftool <tags> wp-content/uploads/2026/11/big-gps-all-1-scaled.jpg
+[IFD0]          Copyright                       : (c) 2026 Jane Doe. All rights reserved.
+[IFD0]          Artist                          : Jane Doe
+[IPTC]          CopyrightNotice                 : Copyright 2026 Jane Doe
+[IPTC]          By-line                         : Jane Doe
+[XMP-dc]        Rights                          : (c) 2026 Jane Doe. All rights reserved.
+[XMP-photoshop] Credit                          : Jane Doe Studio
+[Composite]     ImageSize                       : 1600x1067
+
+$ exiftool <tags> wp-content/uploads/2026/11/xmp-gps-only-1-scaled.jpg
+[IFD0]          Copyright                       : (c) 2026 Jane Doe. All rights reserved.
+[IFD0]          Artist                          : Jane Doe
+[IPTC]          CopyrightNotice                 : Copyright 2026 Jane Doe
+[IPTC]          By-line                         : Jane Doe
+[XMP-dc]        Rights                          : (c) 2026 Jane Doe. All rights reserved.
+[XMP-photoshop] Credit                          : Jane Doe Studio
+[Composite]     ImageSize                       : 1600x1067
+
+$ exiftool <tags> wp-content/uploads/2026/11/heic-gps-1-scaled.jpg
+[IFD0]          Copyright                       : (c) 2026 Jane Doe. All rights reserved.
+[IFD0]          Artist                          : Jane Doe
+[XMP-dc]        Rights                          : (c) 2026 Jane Doe. All rights reserved.
+[XMP-photoshop] Credit                          : Jane Doe Studio
+[Composite]     ImageSize                       : 1600x1067
+
+```
+
+### Finding: common nginx configs block robots.txt and .well-known
+
+The status check on this site reported two problems that come from DDEV's stock WordPress nginx config, not from the plugin:
+
+- **robots_served: Problem (replaced).** The config has `location = /robots.txt { allow all; ... }` with no fallback to `index.php`, so with no physical file nginx returns 404 and WordPress's robots.txt never runs. This affects every plugin that adds to robots.txt. WordPress's output was correct at `/?robots=1`.
+- **tdmrep: Problem.** The config has `location ~ /\. { deny all; }`, which returns 403 for `/.well-known/tdmrep.json`. It would also block an uploaded static `tdmrep.json`, so on this config the download-and-upload advice alone doesn't fix it.
+
+Both are common in WordPress nginx configs. The fix is on the server:
+
+```nginx
+location = /robots.txt {
+    try_files $uri /index.php?$args;
+    access_log off;
+    log_not_found off;
+}
+
+location ^~ /.well-known/ {
+    allow all;
+    try_files $uri /index.php?$args;
+}
+```
+
+The `^~` prefix makes nginx use the `/.well-known/` block for those paths without checking the regex locations, so the `location ~ /\.` deny rule no longer applies there. Where the block sits in the file doesn't matter.
+
+Possible follow-ups, not built: for a 404 robots.txt or a 403 tdmrep.json, the status messages could say that the web server isn't passing the request to WordPress, and point to these lines.
