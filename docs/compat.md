@@ -68,7 +68,7 @@ None of the four sends our response headers on cached pages. The no-AI meta tag 
 
 ### Stale pages
 
-The test: turn "Add no-AI tags" off on the settings page, let the homepage be cached, then turn it back on. None of the four plugins purges its cache when our settings are saved, so visitors kept getting the cached homepage without the tags.
+The test: turn "Add no-AI tags" off on the settings page, let the homepage be cached, then turn it back on. None of the four plugins purges its own cache when our settings are saved, so visitors kept getting the cached homepage without the tags. (These tests ran before the plugin started purging on save; see "Purging on settings save" below.)
 
 - **W3 Total Cache:** detected ("Check this"). Its "flush all" renames cached files to `*_old` and serves the old copy once more while it regenerates, so the first "Check again" after a flush can still say "Check this". The second says OK.
 - **WP Fastest Cache:** detected, and OK after `wpfc_clear_all_cache()`.
@@ -84,21 +84,26 @@ Checked on a cached post with an image block and a gallery, as a logged-out visi
 - **LiteSpeed Cache:** JS, CSS and HTML minify, JS and CSS combine, including "combine external and inline JS". It moves our inline script and CSS into combined files. OK. "Load JS Deferred" is OK too.
 - **LiteSpeed "Load JS Delayed":** every script waits for the visitor's first interaction, so **the first right-click on an image opened the menu.** **Fixed:** with LiteSpeed active, the save friction script tag gets `data-no-defer="1"`, which LiteSpeed leaves out of combining, deferring and delaying (`includes/compat/litespeed.php`, loaded only when `LSCWP_V` is defined). After the fix, the first right-click is blocked with delay and combine on. The CSS part (`user-select`, the iOS long-press rule) was never delayed.
 
-### Purging on settings save (not built)
+### Purging on settings save
 
-Every plugin above has a public purge, so saving our settings could clear the page cache:
+When the settings page is saved and a setting that changes page output actually changed (no-AI tags, rights-reserved notice, save friction, or its extra selectors), the plugin clears every page cache it finds, then clears its own status cache. Changes to the AI bot mode or the image settings don't purge. Nothing is purged at any other time: not on activation, deactivation, "Check again", cron, or option updates from code. The "Settings saved." notice gets one more line: "Cleared {name}'s page cache so visitors see the change.", or with several, "Cleared the page caches from A, B and C so visitors see the change." Without a cache plugin, the notice is core's plain "Settings saved.".
 
-| Plugin | Public purge | Source |
+For 60 seconds after a purge, a missing no-AI tag on the homepage is reported as "Your page cache was just cleared. Some caching plugins take up to a minute to catch up. Check again in a minute." (still "Check this"), and that result is only cached for 60 seconds. After that, the usual message returns.
+
+| Plugin | Purge called | Checked |
 | --- | --- | --- |
-| W3 Total Cache | `w3tc_flush_all()` | Its documentation; not checked in its code here |
-| WP Fastest Cache | `wpfc_clear_all_cache()` | Checked in its code and used in these tests |
-| Cache Enabler | `do_action( 'cache_enabler_clear_complete_cache' )` | Used in these tests |
-| LiteSpeed Cache | `do_action( 'litespeed_purge_all' )` | Its documentation; not checked in its code here |
-| WP Rocket | `rocket_clean_domain()` | Its documentation; not tested (not free) |
+| WP Super Cache | `wp_cache_clear_cache()` | In its code (3.1.5: `wp_cache_clear_cache( $blog_id = 0 )`), and on the dev site |
+| W3 Total Cache | `w3tc_flush_all()` | In its code (2.11.0, `w3-total-cache-api.php`: `w3tc_flush_all( $extras = null )`), and on the dev site |
+| WP Fastest Cache | `wpfc_clear_all_cache()` | In its code (1.5.5: `wpfc_clear_all_cache( $minified = false )`) |
+| Cache Enabler | `do_action( 'cache_enabler_clear_complete_cache' )` | In its code (1.8.17), and on the dev site |
+| LiteSpeed Cache | `do_action( 'litespeed_purge_all' )`, only when `LITESPEED_ALLOWED` is defined | In its code (7.9.4). LiteSpeed defines `LITESPEED_ALLOWED` only where it can cache (a LiteSpeed server), so on other servers there's nothing to clear and no notice. |
+| WP Rocket | `rocket_clean_domain()`, only if the function exists | **Unverified**: WP Rocket isn't free, so its code wasn't checked |
 
-Before building this, check each name against that plugin's current code.
+Results on the dev site, each plugin on its own: cache the homepage with no-AI tags off, then turn them on and save.
 
-Proposal, not built: on `update_option_notfortraining_settings`, and only if a setting that changes page output changed (no-AI tags, rights-reserved notice, save friction or its selectors), call whichever of these exists. Nothing else on the site would be purged at other times. The status check would then have no stale-page case to catch after a settings change, though it would still catch stale pages from other causes.
+- **WP Super Cache:** the save cleared the cache, visitors got the tags on the next (cached) request, and the status check went straight to OK.
+- **Cache Enabler:** same.
+- **W3 Total Cache:** its flush keeps serving the old copy of a page for up to 30 seconds after that copy was cached (`Cache_File_Generic::get_with_old()`). With the homepage cached a few seconds before the save, the first check after saving said "Check this" until the 30 seconds passed, then OK. (That first check now shows the "just cleared" message above.) With the homepage cached more than 30 seconds before the save, the first check said OK.
 
 ### Test environment notes
 

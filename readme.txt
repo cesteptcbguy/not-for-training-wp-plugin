@@ -146,6 +146,8 @@ The plugin also adds its values to the same robots meta tag as your SEO plugin, 
 
 Mostly. The meta tags are saved in the cached page, so they still work. Response headers are only sent when WordPress builds the page. If a caching plugin serves pages straight from the web server, set the `X-Robots-Tag` and `tdm-reservation` headers in your server configuration too. The same goes for image files.
 
+When you change a setting that affects your pages, the plugin clears your caching plugin's cache for you.
+
 = Does it change images already on my site? =
 
 No. The size limit and location removal apply to new uploads only.

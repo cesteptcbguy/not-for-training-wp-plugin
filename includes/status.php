@@ -64,14 +64,15 @@ function notfortraining_get_cached_status() {
 
 /**
  * How long to keep a set of results: 10 minutes, or 60 seconds if any
- * check couldn't run, so a passing hiccup doesn't stick around.
+ * check couldn't run or a page cache was just cleared, so a passing
+ * hiccup doesn't stick around.
  *
  * @param array $results Results.
  * @return int Seconds.
  */
 function notfortraining_status_cache_lifetime( array $results ) {
 	foreach ( $results as $result ) {
-		if ( 'unknown' === ( $result['status'] ?? '' ) ) {
+		if ( 'unknown' === ( $result['status'] ?? '' ) || 'missing_after_purge' === ( $result['reason'] ?? '' ) ) {
 			return MINUTE_IN_SECONDS;
 		}
 	}
@@ -585,6 +586,9 @@ function notfortraining_check_noai_tag( array $context ) {
 	$values = $tags ? array_map( 'trim', explode( ',', $tags[0] ) ) : array();
 	if ( in_array( 'noai', $values, true ) && in_array( 'noimageai', $values, true ) ) {
 		return notfortraining_status_result( $id, 'ok', 'ok', __( 'No-AI tags are on your pages.', 'not-for-training' ) );
+	}
+	if ( notfortraining_cache_recently_purged() ) {
+		return notfortraining_status_result( $id, 'warn', 'missing_after_purge', __( 'Your page cache was just cleared. Some caching plugins take up to a minute to catch up. Check again in a minute.', 'not-for-training' ) );
 	}
 	return notfortraining_status_result( $id, 'warn', 'missing', __( "No-AI tags aren't showing on your homepage yet. If you use a caching plugin, clear its cache, then check again.", 'not-for-training' ) );
 }

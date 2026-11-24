@@ -798,4 +798,36 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 		$this->assertSame( 60, notfortraining_status_cache_lifetime( array( notfortraining_status_unknown( 'x' ) ) ) );
 		$this->assertSame( 600, notfortraining_status_cache_lifetime( array() ) );
 	}
+
+	/**
+	 * Missing tags within 60 seconds of a purge: the "just cleared" copy,
+	 * still a warning, cached for only 60 seconds. After 60 seconds: the
+	 * usual copy.
+	 */
+	public function test_noai_missing_after_purge() {
+		$this->responses['/'] = $this->ok( '<meta name="robots" content="index, follow">' );
+
+		set_transient( 'notfortraining_cache_purged', time() - 59, 60 );
+		$result = $this->check( 'noai_tag' );
+		$this->assertResult( 'warn', 'missing_after_purge', $result );
+		$this->assertSame( 'Your page cache was just cleared. Some caching plugins take up to a minute to catch up. Check again in a minute.', $result['message'] );
+		$this->assertSame( 60, notfortraining_status_cache_lifetime( array( $result ) ) );
+
+		// 60 seconds or more: the usual copy, even if the transient lingers.
+		set_transient( 'notfortraining_cache_purged', time() - 60, 60 );
+		$result = $this->check( 'noai_tag' );
+		$this->assertResult( 'warn', 'missing', $result );
+		$this->assertSame( "No-AI tags aren't showing on your homepage yet. If you use a caching plugin, clear its cache, then check again.", $result['message'] );
+		$this->assertSame( 600, notfortraining_status_cache_lifetime( array( $result ) ) );
+
+		// No purge at all.
+		delete_transient( 'notfortraining_cache_purged' );
+		$this->assertResult( 'warn', 'missing', $this->check( 'noai_tag' ) );
+
+		// Tags present right after a purge: still OK.
+		set_transient( 'notfortraining_cache_purged', time(), 60 );
+		$this->responses['/'] = $this->ok( '<meta name="robots" content="noai, noimageai">' );
+		$this->assertResult( 'ok', 'ok', $this->check( 'noai_tag' ) );
+		delete_transient( 'notfortraining_cache_purged' );
+	}
 }
