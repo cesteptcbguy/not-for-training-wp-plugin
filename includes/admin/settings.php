@@ -237,6 +237,8 @@ function notfortraining_render_settings_page() {
 		<h1><?php esc_html_e( 'Not For Training', 'not-for-training' ); ?></h1>
 		<p class="notfortraining-intro"><?php esc_html_e( "Not For Training tells AI companies not to train on your work and makes your images harder to take, without hiding you from Google. It sends opt-out signals and adds speed bumps. It can't stop someone who ignores the rules or takes a screenshot.", 'not-for-training' ); ?></p>
 
+		<?php notfortraining_render_status_section(); ?>
+
 		<form action="<?php echo esc_url( admin_url( 'options.php' ) ); ?>" method="post">
 			<?php
 			settings_fields( 'notfortraining' );
@@ -285,5 +287,21 @@ function notfortraining_settings_styles( $hook_suffix ) {
 		. '.notfortraining-settings .form-table .description{max-width:40em}'
 		. '.notfortraining-note{max-width:40em;margin-top:1em;padding:.6em .9em;background:#f6f7f7;border-left:4px solid #c3c4c7}'
 		. '.notfortraining-tip{max-width:40em;margin-top:2em;padding:.2em 1em;background:#fff;border:1px solid #c3c4c7;border-radius:4px}'
+		. '.notfortraining-status{max-width:52em;margin:1.5em 0 1em;padding:.4em 1.2em 1.2em;background:#fff;border:1px solid #c3c4c7;border-radius:4px}'
+		. '.notfortraining-status-list{margin:0 0 1em}'
+		. '.notfortraining-status-item{display:flex;gap:.6em;align-items:flex-start;margin:0;padding:.6em 0;border-bottom:1px solid #f0f0f1}'
+		. '.notfortraining-status-item .dashicons{flex:none;margin-top:.1em}'
+		. '.notfortraining-status-word{margin-right:.35em}'
+		. '.notfortraining-status-ok .dashicons{color:#00a32a}'
+		. '.notfortraining-status-warn .dashicons{color:#996800}'
+		. '.notfortraining-status-problem .dashicons{color:#d63638}'
+		. '.notfortraining-status-info .dashicons{color:#2271b1}'
+		. '.notfortraining-status-unknown .dashicons{color:#646970}'
+		. '.notfortraining-copy-rules,.notfortraining-download{margin:.6em 0 0}'
+		. '.notfortraining-copy-rules summary{display:inline-block;list-style:none}'
+		. '.notfortraining-copy-rules summary::-webkit-details-marker{display:none}'
+		. '.notfortraining-copy-rules textarea{display:block;margin-top:.6em;font-size:12px}'
+		. '.notfortraining-upload-hint{display:block;margin-top:.5em}'
+		. '.notfortraining-upload-hint code{word-break:break-all}'
 	);
 }

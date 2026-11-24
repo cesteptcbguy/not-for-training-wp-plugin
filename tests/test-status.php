@@ -606,7 +606,7 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 			list( $url, $args ) = $request;
 			$paths[]            = wp_parse_url( $url, PHP_URL_PATH );
 			$this->assertStringContainsString( 'notfortraining-check=', $url );
-			$this->assertSame( 10, $args['timeout'] );
+			$this->assertSame( 5, $args['timeout'] );
 			$this->assertFalse( $args['sslverify'] );
 		}
 		$this->assertSame( array( '/robots.txt', '/', '/.well-known/tdmrep.json' ), $paths );
@@ -667,5 +667,23 @@ class NotForTraining_Test_Status extends NotForTraining_TestCase {
 
 		$this->set_settings( array( 'robots_mode' => 'all' ) );
 		$this->assertFalse( get_transient( 'notfortraining_status' ) );
+	}
+
+	/**
+	 * Any "unknown" result shortens the cache to 60 seconds.
+	 */
+	public function test_cache_lifetime_short_when_unknown() {
+		$this->responses['/'] = $this->timeout();
+		$results              = notfortraining_get_status( true );
+		$this->assertContains( 'unknown', wp_list_pluck( $results, 'status' ) );
+		$this->assertEqualsWithDelta( time() + 60, (int) get_option( '_transient_timeout_notfortraining_status' ), 5 );
+
+		$this->responses['/'] = $this->ok( '<meta name="robots" content="noai, noimageai">' );
+		$results              = notfortraining_get_status( true );
+		$this->assertNotContains( 'unknown', wp_list_pluck( $results, 'status' ) );
+		$this->assertEqualsWithDelta( time() + 600, (int) get_option( '_transient_timeout_notfortraining_status' ), 5 );
+
+		$this->assertSame( 60, notfortraining_status_cache_lifetime( array( notfortraining_status_unknown( 'x' ) ) ) );
+		$this->assertSame( 600, notfortraining_status_cache_lifetime( array() ) );
 	}
 }

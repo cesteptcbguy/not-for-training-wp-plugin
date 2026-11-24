@@ -35,6 +35,7 @@ require_once NOTFORTRAINING_DIR . 'includes/uploads.php';
 require_once NOTFORTRAINING_DIR . 'includes/status.php';
 require_once NOTFORTRAINING_DIR . 'includes/admin/settings.php';
 require_once NOTFORTRAINING_DIR . 'includes/admin/notice.php';
+require_once NOTFORTRAINING_DIR . 'includes/admin/status-section.php';
 
 register_activation_hook( __FILE__, 'notfortraining_activate' );
 register_deactivation_hook( __FILE__, 'notfortraining_deactivate' );

@@ -14,7 +14,8 @@
  * about the plugin (401, 429, 5xx) gives "unknown", never "problem": that's
  * usually a host setting, not a fault in the plugin or the site.
  *
- * Results are cached for 10 minutes, and cleared when the settings change.
+ * Results are cached for 10 minutes (60 seconds if any check couldn't run),
+ * and cleared when the settings change.
  *
  * @package NotForTraining
  */
@@ -41,14 +42,40 @@ function notfortraining_status_transient() {
  */
 function notfortraining_get_status( $refresh = false ) {
 	if ( ! $refresh ) {
-		$cached = get_transient( notfortraining_status_transient() );
-		if ( is_array( $cached ) ) {
+		$cached = notfortraining_get_cached_status();
+		if ( null !== $cached ) {
 			return $cached;
 		}
 	}
 	$results = notfortraining_run_status_checks();
-	set_transient( notfortraining_status_transient(), $results, 10 * MINUTE_IN_SECONDS );
+	set_transient( notfortraining_status_transient(), $results, notfortraining_status_cache_lifetime( $results ) );
 	return $results;
+}
+
+/**
+ * Cached results, without running anything.
+ *
+ * @return array|null Results, or null if none are cached.
+ */
+function notfortraining_get_cached_status() {
+	$cached = get_transient( notfortraining_status_transient() );
+	return is_array( $cached ) ? $cached : null;
+}
+
+/**
+ * How long to keep a set of results: 10 minutes, or 60 seconds if any
+ * check couldn't run, so a passing hiccup doesn't stick around.
+ *
+ * @param array $results Results.
+ * @return int Seconds.
+ */
+function notfortraining_status_cache_lifetime( array $results ) {
+	foreach ( $results as $result ) {
+		if ( 'unknown' === ( $result['status'] ?? '' ) ) {
+			return MINUTE_IN_SECONDS;
+		}
+	}
+	return 10 * MINUTE_IN_SECONDS;
 }
 
 /**
@@ -190,7 +217,9 @@ function notfortraining_status_fetch( $url ) {
 	$response = wp_remote_get(
 		$url,
 		array(
-			'timeout'     => 10,
+			// Five seconds: the WP HTTP API runs requests one after another,
+			// so three loopbacks can take up to 15 seconds in all.
+			'timeout'     => 5,
 			'redirection' => 3,
 			/** This filter is documented in wp-includes/class-wp-http-streams.php */
 			'sslverify'   => apply_filters( 'https_local_ssl_verify', false ), // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Core's filter for loopback requests, applied as Site Health does.
