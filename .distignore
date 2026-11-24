@@ -1,0 +1,26 @@
+# Files and folders left out of the WordPress.org release (bin/build.sh, 10up deploy action).
+/.git
+/.github
+/.wordpress-org
+/bin
+/build
+/node_modules
+/tests
+/vendor
+.distignore
+.editorconfig
+.gitattributes
+.gitignore
+.wp-env.json
+.wp-env.override.json
+.phpunit.result.cache
+composer.json
+composer.lock
+package.json
+package-lock.json
+phpcs.xml
+phpcs.xml.dist
+phpunit.xml
+phpunit.xml.dist
+README.md
+*.zip

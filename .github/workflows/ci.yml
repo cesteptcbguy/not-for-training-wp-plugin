@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  phpcs:
+    name: PHPCS (WordPress standard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer:v2
+      - run: composer install --no-interaction --no-progress
+      - run: vendor/bin/phpcs -q --report=checkstyle | cs2pr --graceful-warnings
+        shell: bash
+      - if: failure()
+        run: vendor/bin/phpcs
+
+  phpunit:
+    name: PHPUnit (PHP ${{ matrix.php }}, WP ${{ matrix.wp }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '7.4'
+            wp: '6.5'
+          - php: '8.3'
+            wp: latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: composer install --no-interaction --no-progress
+      - run: npm ci
+      - name: Pin WordPress and PHP versions
+        run: |
+          if [ "${{ matrix.wp }}" = "latest" ]; then CORE=null; else CORE='"WordPress/WordPress#${{ matrix.wp }}"'; fi
+          echo "{\"core\": $CORE, \"phpVersion\": \"${{ matrix.php }}\"}" > .wp-env.override.json
+          cat .wp-env.override.json
+      - run: npx wp-env start
+      - run: npm run test:php
+
+  plugin-check:
+    name: Plugin Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash bin/build.sh
+      - uses: wordpress/plugin-check-action@v1
+        with:
+          build-dir: build/not-for-training
