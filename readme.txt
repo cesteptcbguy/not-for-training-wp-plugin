@@ -48,6 +48,13 @@ Google's AI Overviews use the same crawler as Google search, so they can't be bl
 * **Remove location data from new photos.** Phones save where a photo was taken. This removes it and keeps your copyright info.
 * **Only keep the smaller copy.** WordPress normally also keeps your full-size file, at a web address anyone can guess. Turn this on only if your full-size files are saved somewhere else. Full-size files for images uploaded while this is on can't be brought back. This is off by default.
 
+**Saving images**
+
+* **Make images harder to save.** Turns off dragging, right-click saving and the long-press save menu on phones. Anyone determined can still take a screenshot. You can still save your own images while you're logged in. This is on by default.
+* **Extra images to cover.** For web people. Leave this blank unless some images on your site aren't covered. Use CSS selectors, separated by commas.
+
+It covers images in posts and pages, galleries, featured images, lightboxes, WooCommerce product galleries and Elementor images. Clicking still works, so lightboxes, product zoom and linked images behave as before. Anyone who can upload files to your site, such as authors and admins, doesn't get it at all.
+
 = Setup notice =
 
 After you activate the plugin, a notice appears on the Plugins screen and the settings page. It says the plugin is on and offers two buttons: Review settings and Dismiss. Dismissing it hides it for you. Saving the settings hides it for everyone. It doesn't appear anywhere else in the dashboard.
@@ -96,6 +103,12 @@ The plugin doesn't collect any data, set cookies or contact any outside service.
 3. Optional: go to Settings > Not For Training to review the settings.
 
 == Frequently Asked Questions ==
+
+= Can people still save my images? =
+
+Yes. Anyone can take a screenshot, or dig the image out of the page's code. "Make images harder to save" only removes the easy ways: dragging, right-click saving and the long-press menu on phones.
+
+The right-click menu is off on covered images, including images that are links. So "Open in new tab" won't show when someone right-clicks those images. Clicking them still works.
 
 = Will this hurt my search rankings? =
 
@@ -157,3 +170,5 @@ Its settings are removed. Images it changed stay as they are.
 * GPS removal for JPEG (EXIF and XMP), HEIC and HEIF originals, and generated sizes.
 * Optional removal of full-size originals.
 * Settings page and a one-time setup notice.
+* "Is it working?" status check on the settings page, and Site Health tests.
+* "Make images harder to save": no dragging, right-click saving or long-press save menu on images, for visitors.
