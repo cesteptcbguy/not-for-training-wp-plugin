@@ -94,14 +94,24 @@ No. AI Overviews use the same crawler as Google search, so they can't be blocked
 Something is replacing WordPress's robots.txt. Check these:
 
 * A real `robots.txt` file in your site's root folder. The web server sends it before WordPress runs, so the plugin's rules never appear. Remove or rename the file to let WordPress serve robots.txt.
-* Your SEO plugin's robots.txt editor. Some editors save a real file, and some replace WordPress's robots.txt entirely. Either way, the plugin's rules won't show. Clear the custom robots.txt in your SEO plugin, or copy the plugin's rules into it.
+* Your SEO plugin's robots.txt editor. Some editors replace WordPress's robots.txt with your own text. Some save it as a real file (see the next question). Clear the custom robots.txt in your SEO plugin, or copy the plugin's rules into it.
 * "Discourage search engines from indexing this site" under Settings > Reading. When it's on, the plugin doesn't add anything.
 
 Visit `yoursite.com/robots.txt` to see what's being served.
 
+= My SEO plugin saved robots.txt as a file. =
+
+Some SEO plugins can save WordPress's robots.txt as a real file. Yoast SEO's "Create robots.txt file" button does this. The AI rules get copied into the file as they are that day.
+
+After that, the rules won't update on their own. The web server sends the file directly, so the plugin can't change it. If you change the AI bot setting, or a plugin update adds new bots, the file keeps the old rules.
+
+The status check on Settings > Not For Training spots this. It tells you when the saved rules are still current, and when they're out of date. When they're out of date, it gives you the new rules to paste into the file.
+
 = Does it work with Yoast SEO, Rank Math and similar plugins? =
 
-Yes. The plugin adds its rules after theirs in robots.txt, and adds its values to the same robots meta tag instead of printing a second one.
+Yes. The plugin adds its rules to WordPress's robots.txt, next to any rules your SEO plugin adds. Some SEO plugins rearrange the file, so the AI rules may come first or last. Order doesn't matter to crawlers. Each crawler looks for the group that names it.
+
+The plugin also adds its values to the same robots meta tag as your SEO plugin, instead of printing a second one.
 
 = Does it work with page caching? =
 
