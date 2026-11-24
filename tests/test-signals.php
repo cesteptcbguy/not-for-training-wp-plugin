@@ -173,14 +173,41 @@ class NotForTraining_Test_Signals extends NotForTraining_TestCase {
 	}
 
 	/**
-	 * No headers on feeds, plain and pretty permalinks.
+	 * Feed URLs, by permalink structure.
+	 *
+	 * @return array
 	 */
-	public function test_no_headers_on_feeds() {
-		$this->assertSame( array(), $this->headers_for( home_url( '/?feed=rss2' ) ) );
+	public function feed_urls() {
+		return array(
+			'plain /?feed=rss2'           => array( '', '/?feed=rss2' ),
+			'plain /?feed=comments-rss2'  => array( '', '/?feed=comments-rss2' ),
+			'pretty /feed/'               => array( '/%postname%/', '/feed/' ),
+			'pretty /comments/feed/'      => array( '/%postname%/', '/comments/feed/' ),
+			'pretty /?feed=rss2'          => array( '/%postname%/', '/?feed=rss2' ),
+			'pretty /?feed=comments-rss2' => array( '/%postname%/', '/?feed=comments-rss2' ),
+		);
+	}
 
-		$this->set_permalink_structure( '/%postname%/' );
-		$this->assertSame( array(), $this->headers_for( get_feed_link() ) );
-		$this->assertSame( array(), $this->headers_for( get_feed_link( 'comments_rss2' ) ) );
+	/**
+	 * Feeds get both headers, detected from the parsed request.
+	 *
+	 * @dataProvider feed_urls
+	 *
+	 * @param string $structure Permalink structure.
+	 * @param string $path      Feed path.
+	 */
+	public function test_headers_on_feeds( $structure, $path ) {
+		$this->set_permalink_structure( $structure );
+		$headers = $this->headers_for( home_url( $path ) );
+
+		$this->assertNotEmpty( $GLOBALS['wp']->query_vars['feed'] ?? '', 'Request should parse as a feed.' );
+		$this->assertSame(
+			array(
+				'X-Robots-Tag'    => 'noai, noimageai',
+				'tdm-reservation' => '1',
+			),
+			$headers
+		);
 	}
 
 	/**

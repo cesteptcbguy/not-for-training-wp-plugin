@@ -150,9 +150,10 @@ function notfortraining_response_headers() {
 }
 
 /**
- * Whether the current request is a front-end page view: not wp-admin,
- * admin-ajax, cron, wp-login.php, REST or XML-RPC, and not a feed,
- * robots.txt or sitemap.
+ * Whether the current request is a front-end page or feed: not wp-admin,
+ * admin-ajax, cron, wp-login.php, REST or XML-RPC, and not robots.txt or a
+ * sitemap. Feeds count: they carry full post content and image URLs, and
+ * a TDM reservation applies to any resource.
  *
  * On send_headers the main query hasn't run yet, so is_feed() and friends
  * are still false; the parsed query vars on $wp are checked instead.
@@ -168,7 +169,10 @@ function notfortraining_is_front_end_request( $wp = null ) {
 		return false;
 	}
 	if ( $wp instanceof WP ) {
-		foreach ( array( 'feed', 'robots', 'sitemap', 'sitemap-stylesheet', 'rest_route' ) as $var ) {
+		if ( ! empty( $wp->query_vars['feed'] ) ) {
+			return true;
+		}
+		foreach ( array( 'robots', 'sitemap', 'sitemap-stylesheet', 'rest_route' ) as $var ) {
 			if ( ! empty( $wp->query_vars[ $var ] ) ) {
 				return false;
 			}
@@ -179,7 +183,7 @@ function notfortraining_is_front_end_request( $wp = null ) {
 
 /**
  * The headers to send for this request: notfortraining_response_headers()
- * on front-end page views, nothing anywhere else.
+ * on front-end pages and feeds, nothing anywhere else.
  *
  * @param WP|null $wp Current request.
  * @return array<string, string> Header name => value.
@@ -189,7 +193,7 @@ function notfortraining_headers_for_request( $wp = null ) {
 }
 
 /**
- * Send the noai and TDM headers on front-end page views. X-Robots-Tag is
+ * Send the noai and TDM headers on front-end pages and feeds. X-Robots-Tag is
  * added alongside any existing one (for example a noindex from an SEO
  * plugin), not in place of it.
  *
