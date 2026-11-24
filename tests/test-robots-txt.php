@@ -234,4 +234,43 @@ class NotForTraining_Test_Robots_Txt extends NotForTraining_TestCase {
 		$this->assertContains( 'Claude-User', $bots['search'] );
 		$this->assertEmpty( array_intersect( $bots['training'], $bots['search'] ) );
 	}
+
+	/**
+	 * The block starts with the bare marker line, once, right after the
+	 * existing output and a blank line.
+	 */
+	public function test_marker_line_starts_the_block() {
+		$before = $this->robots( false );
+		$after  = $this->robots();
+
+		$this->assertSame( 1, preg_match_all( '/^# Not For Training$/m', $after ) );
+		$this->assertStringStartsWith( rtrim( $before ) . "\n\n# Not For Training\n# AI training and dataset crawlers are not permitted.\nUser-agent: GPTBot\n", $after );
+		$this->assertSame( rtrim( $before ) . "\n\n" . notfortraining_robots_block(), $after );
+
+		$this->set_settings( array( 'robots_mode' => 'all' ) );
+		$this->assertStringStartsWith( "# Not For Training\n", notfortraining_robots_block() );
+		$this->assertSame( '', notfortraining_robots_block( 'off' ) );
+	}
+
+	/**
+	 * The shared parser reads groups like RFC 9309.
+	 */
+	public function test_parser() {
+		$groups = notfortraining_parse_robots_txt( "# c\r\nUser-agent: A\nUser-Agent: b # note\nDisallow: /x\nSitemap: https://e/s.xml\nallow: /\nUser-agent: *\nDisallow:\n" );
+		$this->assertSame(
+			array(
+				array(
+					'agents' => array( 'a', 'b' ),
+					'rules'  => array( array( 'disallow', '/x' ), array( 'allow', '/' ) ),
+				),
+				array(
+					'agents' => array( '*' ),
+					'rules'  => array( array( 'disallow', '' ) ),
+				),
+			),
+			$groups
+		);
+		$this->assertSame( array( 'a', 'b' ), notfortraining_robots_group_for( $groups, 'B' )['agents'] );
+		$this->assertSame( array( '*' ), notfortraining_robots_group_for( $groups, 'Googlebot' )['agents'] );
+	}
 }

@@ -17,7 +17,8 @@ add_action( 'send_headers', 'notfortraining_send_headers' );
  * Append the AI crawler groups to WordPress's virtual robots.txt.
  *
  * Runs late (999) so core's rules, SEO plugins' rules and Sitemap lines are
- * already in place. Only appends: the "User-agent: *" group is never edited,
+ * already in place. The block starts with the marker line
+ * "# Not For Training". Only appends: the "User-agent: *" group is never edited,
  * so search engines read exactly what they did before. A site set to
  * discourage search engines is returned unchanged.
  *
@@ -35,37 +36,128 @@ function notfortraining_robots_txt( $output, $is_public ) {
 		return $output;
 	}
 
-	$mode = notfortraining_get_option( 'robots_mode' );
-	if ( 'off' === $mode ) {
-		return $output;
-	}
-
-	$bots  = notfortraining_get_bots();
-	$block = '';
-
-	if ( $bots['training'] ) {
-		$block .= "\n# Not For Training: AI training and dataset crawlers are not permitted.\n";
-		$block .= notfortraining_robots_user_agents( $bots['training'] );
-		$block .= "Disallow: /\n";
-	}
-
-	if ( $bots['search'] ) {
-		if ( 'all' === $mode ) {
-			$block .= "\n# Not For Training: AI search and user-requested fetches are not permitted.\n";
-			$block .= notfortraining_robots_user_agents( $bots['search'] );
-			$block .= "Disallow: /\n";
-		} else {
-			$block .= "\n# Not For Training: AI search and user-requested fetches are permitted, same rules as search engines.\n";
-			$block .= notfortraining_robots_user_agents( $bots['search'] );
-			$block .= implode( "\n", notfortraining_robots_search_rules() ) . "\n";
-		}
-	}
-
+	$block = notfortraining_robots_block();
 	if ( '' === $block ) {
 		return $output;
 	}
 
-	return rtrim( (string) $output ) . "\n" . $block;
+	return rtrim( (string) $output ) . "\n\n" . $block;
+}
+
+/**
+ * The marker line that starts the plugin's robots.txt block, so the status
+ * check (and anyone reading the file) can tell the rules are ours.
+ *
+ * @return string
+ */
+function notfortraining_robots_marker() {
+	return '# Not For Training';
+}
+
+/**
+ * The block of rules the plugin adds to robots.txt for a mode: the marker
+ * line, the AI training group, then the AI search group. Empty in "off"
+ * mode or when both lists are empty.
+ *
+ * @param string|null $mode "training", "all" or "off"; null for the setting.
+ * @return string
+ */
+function notfortraining_robots_block( $mode = null ) {
+	$mode = null === $mode ? notfortraining_get_option( 'robots_mode' ) : $mode;
+	if ( 'off' === $mode ) {
+		return '';
+	}
+
+	$bots   = notfortraining_get_bots();
+	$groups = array();
+
+	if ( $bots['training'] ) {
+		$groups[] = "# AI training and dataset crawlers are not permitted.\n"
+			. notfortraining_robots_user_agents( $bots['training'] )
+			. "Disallow: /\n";
+	}
+
+	if ( $bots['search'] ) {
+		if ( 'all' === $mode ) {
+			$groups[] = "# AI search and user-requested fetches are not permitted.\n"
+				. notfortraining_robots_user_agents( $bots['search'] )
+				. "Disallow: /\n";
+		} else {
+			$groups[] = "# AI search and user-requested fetches are permitted, same rules as search engines.\n"
+				. notfortraining_robots_user_agents( $bots['search'] )
+				. implode( "\n", notfortraining_robots_search_rules() ) . "\n";
+		}
+	}
+
+	if ( ! $groups ) {
+		return '';
+	}
+
+	return notfortraining_robots_marker() . "\n" . implode( "\n", $groups );
+}
+
+/**
+ * Parse robots.txt into groups, the way RFC 9309 reads them: consecutive
+ * User-agent lines open a group, and the rules after them belong to it.
+ * Comments, blank lines and other directives (Sitemap, Crawl-delay) are
+ * skipped.
+ *
+ * @param string $text robots.txt.
+ * @return array<int, array{agents: string[], rules: array<int, array{0: string, 1: string}>}>
+ *         Agents lowercased; rules as array( "allow"|"disallow", path ).
+ */
+function notfortraining_parse_robots_txt( $text ) {
+	$groups  = array();
+	$current = -1;
+	$in_ua   = false;
+	foreach ( preg_split( '/\r\n|\r|\n/', (string) $text ) as $line ) {
+		$line = trim( preg_replace( '/#.*$/', '', $line ) );
+		if ( '' === $line || false === strpos( $line, ':' ) ) {
+			continue;
+		}
+		list( $field, $value ) = array_map( 'trim', explode( ':', $line, 2 ) );
+		$field                 = strtolower( $field );
+
+		if ( 'user-agent' === $field ) {
+			if ( ! $in_ua ) {
+				$groups[] = array(
+					'agents' => array(),
+					'rules'  => array(),
+				);
+				$current  = count( $groups ) - 1;
+				$in_ua    = true;
+			}
+			$groups[ $current ]['agents'][] = strtolower( $value );
+			continue;
+		}
+
+		$in_ua = false;
+		if ( $current >= 0 && ( 'allow' === $field || 'disallow' === $field ) ) {
+			$groups[ $current ]['rules'][] = array( $field, $value );
+		}
+	}
+	return $groups;
+}
+
+/**
+ * The group a crawler follows: the one naming it, else the "*" group.
+ *
+ * @param array  $groups Parsed groups.
+ * @param string $agent  User agent token.
+ * @return array|null
+ */
+function notfortraining_robots_group_for( array $groups, $agent ) {
+	$agent    = strtolower( $agent );
+	$fallback = null;
+	foreach ( $groups as $group ) {
+		if ( in_array( $agent, $group['agents'], true ) ) {
+			return $group;
+		}
+		if ( null === $fallback && in_array( '*', $group['agents'], true ) ) {
+			$fallback = $group;
+		}
+	}
+	return $fallback;
 }
 
 /**
