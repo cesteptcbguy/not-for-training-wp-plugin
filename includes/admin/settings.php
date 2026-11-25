@@ -153,7 +153,8 @@ function notfortraining_register_settings() {
 }
 
 /**
- * The save_friction checkbox, with the custom selectors textarea under it.
+ * The save_friction checkbox, with the scope radios and the custom
+ * selectors textarea under it.
  */
 function notfortraining_field_save_friction() {
 	notfortraining_field_checkbox(
@@ -163,7 +164,31 @@ function notfortraining_field_save_friction() {
 			'help'  => __( "Turns off dragging, right-click saving and the long-press save menu on phones. Anyone determined can still take a screenshot. You can still save your own images while you're logged in.", 'not-for-training' ),
 		)
 	);
+	$current = notfortraining_get_option( 'save_friction_scope' );
+	$choices = array(
+		'all'    => array(
+			__( 'Every image on my pages (recommended)', 'not-for-training' ),
+			__( 'Covers all your images, so it works with any theme. Logos and small icons are left alone.', 'not-for-training' ),
+		),
+		'common' => array(
+			__( 'Only standard WordPress image blocks', 'not-for-training' ),
+			__( 'Use this if covering every image causes a problem on your site.', 'not-for-training' ),
+		),
+	);
 	?>
+	<fieldset class="notfortraining-scope">
+		<legend class="screen-reader-text"><?php esc_html_e( 'Which images to cover', 'not-for-training' ); ?></legend>
+		<?php foreach ( $choices as $value => $text ) : ?>
+			<?php $help_id = 'notfortraining-save_friction_scope-' . $value . '-help'; ?>
+			<div class="notfortraining-choice">
+				<label>
+					<input type="radio" name="notfortraining_settings[save_friction_scope]" value="<?php echo esc_attr( $value ); ?>" aria-describedby="<?php echo esc_attr( $help_id ); ?>" <?php checked( $current, $value ); ?>>
+					<?php echo esc_html( $text[0] ); ?>
+				</label>
+				<p class="description" id="<?php echo esc_attr( $help_id ); ?>"><?php echo esc_html( $text[1] ); ?></p>
+			</div>
+		<?php endforeach; ?>
+	</fieldset>
 	<p class="notfortraining-selectors">
 		<label for="notfortraining-save_friction_selectors"><?php esc_html_e( 'Extra images to cover', 'not-for-training' ); ?></label>
 		<textarea id="notfortraining-save_friction_selectors" name="notfortraining_settings[save_friction_selectors]" class="large-text code" rows="3" maxlength="500" aria-describedby="notfortraining-save_friction_selectors-help"><?php echo esc_textarea( (string) notfortraining_get_option( 'save_friction_selectors' ) ); ?></textarea>
@@ -313,6 +338,7 @@ function notfortraining_settings_styles( $hook_suffix ) {
 		'.notfortraining-intro{max-width:46em;font-size:14px}'
 		. '.notfortraining-choice{margin:0 0 .9em}'
 		. '.notfortraining-choice .description{margin:.2em 0 0 1.85em;max-width:40em}'
+		. '.notfortraining-scope{margin:1em 0 0}'
 		. '.notfortraining-settings .form-table .description{max-width:40em}'
 		. '.notfortraining-note{max-width:40em;margin-top:1em;padding:.6em .9em;background:#f6f7f7;border-left:4px solid #c3c4c7}'
 		. '.notfortraining-tip{max-width:40em;margin-top:2em;padding:.2em 1em;background:#fff;border:1px solid #c3c4c7;border-radius:4px}'

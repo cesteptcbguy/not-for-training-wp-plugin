@@ -135,32 +135,139 @@ class NotForTraining_Test_Save_Friction extends NotForTraining_TestCase {
 	}
 
 	/**
-	 * The default selector list, in CSS and script.
+	 * The CSS declarations every covered rule gets.
+	 *
+	 * @return string
 	 */
-	public function test_default_selectors() {
-		$defaults = '.entry-content img,.wp-block-image img,.wp-block-gallery img,.gallery img,.wp-block-post-featured-image img,.wp-post-image,.wp-lightbox-overlay img,.woocommerce-product-gallery img,.pswp img,.elementor-widget-image img,.elementor-gallery-item img,.elementor-lightbox img';
-		$this->assertSame( $defaults, notfortraining_save_friction_selectors()['defaults'] );
-
-		$this->go_to( home_url( '/' ) );
-		$out = $this->enqueue();
-		$this->assertSame( $defaults . '{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}', $out['css'] );
-		$this->assertStringContainsString( '(document,' . wp_json_encode( $defaults ) . ',"");', $out['js'] );
+	private function declarations() {
+		return '{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}';
 	}
 
 	/**
-	 * Custom selectors get their own CSS rule and are appended in the
-	 * script only if the browser accepts them.
+	 * The exclusion list, as printed.
+	 *
+	 * @return string
 	 */
-	public function test_custom_selectors_appended() {
-		$this->set_settings( array( 'save_friction_selectors' => '.portfolio img, .hero > img' ) );
-		$this->assertSame( '.portfolio img, .hero img', notfortraining_get_option( 'save_friction_selectors' ) );
+	private function exclusions() {
+		return '.custom-logo,.wp-block-site-logo img,.site-logo img,[class*="logo"] > img,[class*="logo"] > a > img,img.avatar,img.emoji,img.wp-smiley,#wpadminbar img,button img';
+	}
+
+	/**
+	 * The "common" list, as printed.
+	 *
+	 * @return string
+	 */
+	private function common_list() {
+		return '.entry-content img,.wp-block-image img,.wp-block-gallery img,.gallery img,.wp-block-post-featured-image img,.wp-post-image,.wp-lightbox-overlay img,.woocommerce-product-gallery img,.pswp img,.elementor-widget-image img,.elementor-gallery-item img,.elementor-lightbox img';
+	}
+
+	/**
+	 * The default scope is "all", including for sites saved before the
+	 * scope setting existed.
+	 */
+	public function test_default_scope_is_all() {
+		$this->assertSame( 'all', notfortraining_defaults()['save_friction_scope'] );
+		$this->assertSame( 'all', notfortraining_get_option( 'save_friction_scope' ) );
+
+		// An older stored array with no scope key.
+		update_option(
+			'notfortraining_settings',
+			array(
+				'robots_mode'             => 'training',
+				'save_friction'           => true,
+				'save_friction_selectors' => '',
+			)
+		);
+		$this->assertSame( 'all', notfortraining_get_option( 'save_friction_scope' ) );
+	}
+
+	/**
+	 * "all": every image minus the exclusion list, in CSS and script, with
+	 * the size check in the script.
+	 */
+	public function test_all_scope_output() {
+		$this->assertSame(
+			array(
+				'covered' => 'img',
+				'skip'    => $this->exclusions(),
+				'custom'  => '',
+			),
+			notfortraining_save_friction_selectors()
+		);
 
 		$this->go_to( home_url( '/' ) );
-		$out     = $this->enqueue();
-		$declare = '{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}';
-		$this->assertStringEndsWith( '.wp-lightbox-overlay img,.woocommerce-product-gallery img,.pswp img,.elementor-widget-image img,.elementor-gallery-item img,.elementor-lightbox img' . $declare . '.portfolio img, .hero img' . $declare, $out['css'] );
-		$this->assertStringContainsString( ',".portfolio img, .hero img");', $out['js'] );
-		$this->assertStringContainsString( 'try{d.querySelector(c);s+=","+c}catch(e){}', $out['js'] );
+		$out = $this->enqueue();
+		$this->assertSame( 'img:not(' . $this->exclusions() . ')' . $this->declarations(), $out['css'] );
+		$this->assertStringContainsString( '(document,"img",' . wp_json_encode( $this->exclusions() ) . ',"");', $out['js'] );
+		foreach ( array( '.custom-logo', '.wp-block-site-logo img', '.site-logo img', '[class*=\\"logo\\"] > img', '[class*=\\"logo\\"] > a > img', 'img.avatar', 'img.emoji', 'img.wp-smiley', '#wpadminbar img', 'button img' ) as $exclusion ) {
+			$this->assertStringContainsString( $exclusion, $out['js'], $exclusion );
+		}
+		$this->assertStringNotContainsString( 'logo"] img', $out['css'], 'A loose logo match would cover <body class="wp-custom-logo"> and so every image.' );
+		$this->assertStringContainsString( 'r=t.getBoundingClientRect();if(r.width<64||r.height<64)return;', $out['js'] );
+		$this->assertStringContainsString( '!(c&&t.matches(c)||t.matches(s)&&!(x&&t.matches(x)))', $out['js'] );
+	}
+
+	/**
+	 * "common": the old default list, with no exclusions.
+	 */
+	public function test_common_scope_output() {
+		$this->set_settings( array( 'save_friction_scope' => 'common' ) );
+		$this->assertSame(
+			array(
+				'covered' => $this->common_list(),
+				'skip'    => '',
+				'custom'  => '',
+			),
+			notfortraining_save_friction_selectors()
+		);
+
+		$this->go_to( home_url( '/' ) );
+		$out = $this->enqueue();
+		$this->assertSame( $this->common_list() . $this->declarations(), $out['css'] );
+		$this->assertStringContainsString( '(document,' . wp_json_encode( $this->common_list() ) . ',"","");', $out['js'] );
+		$this->assertStringNotContainsString( 'img.avatar', $out['css'] . $out['js'] );
+		$this->assertStringContainsString( 'if(r.width<64||r.height<64)return;', $out['js'], 'The size check applies to both scopes.' );
+	}
+
+	/**
+	 * Custom selectors get their own CSS rule and are added in the script,
+	 * only if the browser accepts them, in both scopes.
+	 */
+	public function test_custom_selectors_appended() {
+		foreach ( array(
+			'all'    => 'img:not(' . $this->exclusions() . ')',
+			'common' => $this->common_list(),
+		) as $scope => $covered ) {
+			$this->set_settings(
+				array(
+					'save_friction_scope'     => $scope,
+					'save_friction_selectors' => '.portfolio img, .hero > img',
+				)
+			);
+			$this->assertSame( '.portfolio img, .hero img', notfortraining_get_option( 'save_friction_selectors' ), $scope );
+
+			$this->go_to( home_url( '/' ) );
+			$out = $this->enqueue();
+			$this->assertSame( $covered . $this->declarations() . '.portfolio img, .hero img' . $this->declarations(), $out['css'], $scope );
+			$this->assertStringEndsWith( ',".portfolio img, .hero img");', $out['js'], $scope );
+			$this->assertStringContainsString( 'if(c){try{d.querySelector(c)}catch(e){c=""}}', $out['js'], $scope );
+		}
+	}
+
+	/**
+	 * The option and the settings sanitizer only accept the two scopes.
+	 */
+	public function test_scope_sanitizer() {
+		$this->assertSame( array( 'all', 'common' ), notfortraining_save_friction_scopes() );
+		foreach ( array( 'all', 'common' ) as $scope ) {
+			$this->assertSame( $scope, notfortraining_sanitize_option( 'save_friction_scope', $scope ) );
+			$this->assertSame( $scope, notfortraining_sanitize_settings( array( 'save_friction_scope' => $scope ) )['save_friction_scope'] );
+		}
+		foreach ( array( 'ALL', 'none', '', 'common ', 1, null, array( 'common' ) ) as $bad ) {
+			$this->assertSame( 'all', notfortraining_sanitize_option( 'save_friction_scope', $bad ), wp_json_encode( $bad ) );
+			$this->assertSame( 'all', notfortraining_sanitize_settings( array( 'save_friction_scope' => $bad ) )['save_friction_scope'], wp_json_encode( $bad ) );
+		}
+		$this->assertSame( 'all', notfortraining_sanitize_settings( array() )['save_friction_scope'] );
 	}
 
 	/**
@@ -168,8 +275,11 @@ class NotForTraining_Test_Save_Friction extends NotForTraining_TestCase {
 	 */
 	public function test_size() {
 		$this->go_to( home_url( '/' ) );
-		$out = $this->enqueue();
-		$this->assertLessThan( 1024, strlen( $out['css'] ) + strlen( $out['js'] ) );
+		foreach ( array( 'all', 'common' ) as $scope ) {
+			$this->set_settings( array( 'save_friction_scope' => $scope ) );
+			$out = $this->enqueue();
+			$this->assertLessThan( 1024, strlen( $out['css'] ) + strlen( $out['js'] ), $scope );
+		}
 	}
 
 	/**
@@ -250,6 +360,13 @@ class NotForTraining_Test_Save_Friction extends NotForTraining_TestCase {
 		$this->assertMatchesRegularExpression( '#<h2[^>]*>Saving images</h2>#', $html );
 		$this->assertStringContainsString( 'Make images harder to save', $html );
 		$this->assertStringContainsString( 'Turns off dragging, right-click saving and the long-press save menu on phones. Anyone determined can still take a screenshot. You can still save your own images while you&#039;re logged in.', $html );
+		$this->assertMatchesRegularExpression( '#<input type="radio" name="notfortraining_settings\[save_friction_scope\]" value="all"[^>]*checked#', $html );
+		$this->assertStringContainsString( 'Every image on my pages (recommended)', $html );
+		$this->assertStringContainsString( 'Covers all your images, so it works with any theme. Logos and small icons are left alone.', $html );
+		$this->assertStringContainsString( 'Only standard WordPress image blocks', $html );
+		$this->assertStringContainsString( 'Use this if covering every image causes a problem on your site.', $html );
+		$this->assertLessThan( strpos( $html, 'notfortraining-save_friction_selectors' ), strpos( $html, 'save_friction_scope' ), 'Radios go above the textarea.' );
+		$this->assertLessThan( strpos( $html, 'save_friction_scope' ), strpos( $html, 'id="notfortraining-save_friction"' ), 'Radios go under the checkbox.' );
 		$this->assertStringContainsString( '<label for="notfortraining-save_friction_selectors">Extra images to cover</label>', $html );
 		$this->assertMatchesRegularExpression( '#<textarea id="notfortraining-save_friction_selectors" name="notfortraining_settings\[save_friction_selectors\]"[^>]*maxlength="500"#', $html );
 		$this->assertStringContainsString( 'For web people. Leave this blank unless some images on your site aren&#039;t covered. Use CSS selectors, separated by commas.', $html );

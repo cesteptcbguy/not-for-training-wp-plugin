@@ -1,8 +1,14 @@
 <?php
 /**
- * Save friction: on images that match the selectors, no dragging, no
- * right-click menu, and no long-press save sheet on iOS. Clicks are left
- * alone, so lightboxes, product zoom and links on images keep working.
+ * Save friction: on covered images, no dragging, no right-click menu, and
+ * no long-press save sheet on iOS. Clicks are left alone, so lightboxes,
+ * product zoom and links on images keep working.
+ *
+ * Covered images: every image except logos, avatars, emoji, the admin bar
+ * and images in buttons (the default "all" scope), or only the common
+ * WordPress and gallery plugin images ("common"), plus any custom
+ * selectors. Images shown smaller than 64px on either side keep their
+ * normal menu, so icons and small UI images aren't affected.
  *
  * Front end only, for people who can't upload files: the site's own
  * authors and editors can still save their images. One inline style and
@@ -16,7 +22,45 @@ defined( 'ABSPATH' ) || exit;
 add_action( 'wp_enqueue_scripts', 'notfortraining_enqueue_save_friction', 20 );
 
 /**
- * Selectors covered by default: content images, core blocks and their
+ * Images the "all" scope leaves alone: site logos, avatars, emoji, the
+ * admin bar, and images inside buttons. Each selector matches the image
+ * itself.
+ *
+ * Theme logo wrappers ("site-logo", "logo-link", "navbar-logo"...) are
+ * matched only as the image's parent, or its link's parent. A looser
+ * "[class*=logo] img" would match every image on the page: WordPress adds
+ * "wp-custom-logo" to <body> on any site with a logo, and post classes
+ * such as "category-logos" would do the same for whole posts.
+ *
+ * @return string[]
+ */
+function notfortraining_save_friction_exclusions() {
+	return array(
+		'.custom-logo',
+		'.wp-block-site-logo img',
+		'.site-logo img',
+		'[class*="logo"] > img',
+		'[class*="logo"] > a > img',
+		'img.avatar',
+		'img.emoji',
+		'img.wp-smiley',
+		'#wpadminbar img',
+		'button img',
+	);
+}
+
+/**
+ * Smallest width and height, in CSS pixels, of an image shown on the page
+ * for save friction to apply. Checked in the script when the event fires.
+ *
+ * @return int
+ */
+function notfortraining_save_friction_min_size() {
+	return 64;
+}
+
+/**
+ * Selectors covered by the "common" scope: content images, core blocks and their
  * lightbox, featured images, WooCommerce's product gallery and PhotoSwipe,
  * and Elementor's image widget, gallery and lightbox.
  *
@@ -40,16 +84,24 @@ function notfortraining_save_friction_default_selectors() {
 }
 
 /**
- * The selector lists to use: the defaults, and the site's custom ones
- * (already sanitized, possibly empty). Kept apart so an unusual custom
- * selector a browser doesn't support can never switch off the defaults.
+ * The selector lists to use:
  *
- * @return array{defaults: string, custom: string}
+ * - covered: "img" for the "all" scope, or the "common" list.
+ * - skip:    images the "all" scope leaves alone ("" for "common").
+ * - custom:  the site's custom selectors (already sanitized, possibly
+ *            empty). Kept apart so an unusual custom selector a browser
+ *            doesn't support can never switch off the others, and not
+ *            subject to the exclusions: a site that names an image wants
+ *            it covered.
+ *
+ * @return array{covered: string, skip: string, custom: string}
  */
 function notfortraining_save_friction_selectors() {
+	$all = 'all' === notfortraining_get_option( 'save_friction_scope' );
 	return array(
-		'defaults' => implode( ',', notfortraining_save_friction_default_selectors() ),
-		'custom'   => (string) notfortraining_get_option( 'save_friction_selectors' ),
+		'covered' => $all ? 'img' : implode( ',', notfortraining_save_friction_default_selectors() ),
+		'skip'    => $all ? implode( ',', notfortraining_save_friction_exclusions() ) : '',
+		'custom'  => (string) notfortraining_get_option( 'save_friction_selectors' ),
 	);
 }
 
@@ -70,15 +122,18 @@ function notfortraining_save_friction_applies() {
 }
 
 /**
- * The inline CSS. Defaults and custom selectors are separate rules, so a
- * custom selector a browser rejects only drops its own rule.
+ * The inline CSS. The covered images and custom selectors are separate
+ * rules, so a custom selector a browser rejects only drops its own rule.
+ * Exclusions use :not() with a selector list; a browser too old for that
+ * drops the rule, and the script still covers the images.
  *
  * @return string
  */
 function notfortraining_save_friction_css() {
 	$selectors    = notfortraining_save_friction_selectors();
 	$declarations = '{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}';
-	$css          = $selectors['defaults'] . $declarations;
+	$covered      = '' !== $selectors['skip'] ? $selectors['covered'] . ':not(' . $selectors['skip'] . ')' : $selectors['covered'];
+	$css          = $covered . $declarations;
 	if ( '' !== $selectors['custom'] ) {
 		$css .= $selectors['custom'] . $declarations;
 	}
@@ -88,16 +143,21 @@ function notfortraining_save_friction_css() {
 /**
  * The inline script: one listener each for contextmenu and dragstart on
  * the document, so images added later (lightboxes, infinite scroll) are
- * covered too. Custom selectors are only used if the browser accepts them.
+ * covered too. The target is covered if it matches a custom selector, or
+ * matches the covered selector and no exclusion. Then, if it's shown
+ * smaller than the minimum size on either side, it's left alone. Custom
+ * selectors are only used if the browser accepts them.
  *
  * @return string
  */
 function notfortraining_save_friction_js() {
 	$selectors = notfortraining_save_friction_selectors();
-	return '(function(d,s,c){if(c){try{d.querySelector(c);s+=","+c}catch(e){}}'
-		. 'function f(e){var t=e.target;if(t&&t.matches&&t.matches(s))e.preventDefault()}'
+	$min       = (int) notfortraining_save_friction_min_size();
+	return '(function(d,s,x,c){if(c){try{d.querySelector(c)}catch(e){c=""}}'
+		. 'function f(e){var t=e.target,r;if(!t||!t.matches||!(c&&t.matches(c)||t.matches(s)&&!(x&&t.matches(x))))return;'
+		. 'r=t.getBoundingClientRect();if(r.width<' . $min . '||r.height<' . $min . ')return;e.preventDefault()}'
 		. 'd.addEventListener("contextmenu",f);d.addEventListener("dragstart",f)})(document,'
-		. wp_json_encode( $selectors['defaults'] ) . ',' . wp_json_encode( $selectors['custom'] ) . ');';
+		. wp_json_encode( $selectors['covered'] ) . ',' . wp_json_encode( $selectors['skip'] ) . ',' . wp_json_encode( $selectors['custom'] ) . ');';
 }
 
 /**

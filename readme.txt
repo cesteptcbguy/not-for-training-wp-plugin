@@ -5,7 +5,7 @@ Tags: ai, robots.txt, crawlers, copyright, privacy
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.1.0-beta.1
+Stable tag: 0.1.0-beta.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -51,9 +51,11 @@ Google's AI Overviews use the same crawler as Google search, so they can't be bl
 **Saving images**
 
 * **Make images harder to save.** Turns off dragging, right-click saving and the long-press save menu on phones. Anyone determined can still take a screenshot. You can still save your own images while you're logged in. This is on by default.
+* **Every image on my pages (recommended).** Covers all your images, so it works with any theme. Logos and small icons are left alone.
+* **Only standard WordPress image blocks.** Use this if covering every image causes a problem on your site.
 * **Extra images to cover.** For web people. Leave this blank unless some images on your site aren't covered. Use CSS selectors, separated by commas.
 
-It covers images in posts and pages, galleries, featured images, lightboxes, WooCommerce product galleries and Elementor images. Clicking still works, so lightboxes, product zoom and linked images behave as before. Anyone who can upload files to your site, such as authors and admins, doesn't get it at all.
+By default it covers every image on your pages, whatever your theme. It leaves alone your site logo, profile pictures, emoji, and anything shown smaller than 64 pixels, such as icons. The standard setting covers images in posts and pages, galleries, featured images, lightboxes, WooCommerce product galleries and Elementor images. Clicking still works, so lightboxes, product zoom and linked images behave as before. Anyone who can upload files to your site, such as authors and admins, doesn't get it at all.
 
 = Setup notice =
 
@@ -108,7 +110,13 @@ The plugin doesn't collect any data, set cookies or contact any outside service.
 
 Yes. Anyone can take a screenshot, or dig the image out of the page's code. "Make images harder to save" only removes the easy ways: dragging, right-click saving and the long-press menu on phones.
 
-The right-click menu is off on covered images, including images that are links. So "Open in new tab" won't show when someone right-clicks those images. Clicking them still works.
+The right-click menu is off on covered images, including images that are links. So "Open in new tab" won't show when someone right-clicks those images. Clicking them still works. Your site logo, profile pictures, emoji and small icons keep their normal menu.
+
+= Covering every image causes a problem on my site. =
+
+Go to Settings > Not For Training. Under "Saving images", choose "Only standard WordPress image blocks" and save. That covers images in posts and pages, galleries, featured images and lightboxes, and leaves the rest of your theme alone.
+
+If some of your images aren't covered after that, a web person can add them in "Extra images to cover".
 
 = Will this hurt my search rankings? =
 
@@ -180,4 +188,4 @@ Its settings are removed. Images it changed stay as they are.
 * Optional removal of full-size originals.
 * Settings page and a one-time setup notice.
 * "Is it working?" status check on the settings page, and Site Health tests.
-* "Make images harder to save": no dragging, right-click saving or long-press save menu on images, for visitors.
+* "Make images harder to save": no dragging, right-click saving or long-press save menu on images, for visitors. Covers every image except logos, profile pictures, emoji and small icons, or only standard WordPress image blocks.

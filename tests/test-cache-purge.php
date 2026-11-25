@@ -93,6 +93,7 @@ class NotForTraining_Test_Cache_Purge extends NotForTraining_TestCase {
 			array( 'noai_signals' => false ),
 			array( 'tdm_reservation' => false ),
 			array( 'save_friction' => false ),
+			array( 'save_friction_scope' => 'common' ),
 			array( 'save_friction_selectors' => '.portfolio img' ),
 		) as $i => $change ) {
 			$this->save( $change );

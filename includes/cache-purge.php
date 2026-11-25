@@ -23,7 +23,7 @@ add_action( 'add_option_notfortraining_settings', 'notfortraining_purge_on_add',
  * @return string[]
  */
 function notfortraining_page_output_settings() {
-	return array( 'noai_signals', 'tdm_reservation', 'save_friction', 'save_friction_selectors' );
+	return array( 'noai_signals', 'tdm_reservation', 'save_friction', 'save_friction_scope', 'save_friction_selectors' );
 }
 
 /**

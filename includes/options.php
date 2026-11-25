@@ -24,6 +24,11 @@ defined( 'ABSPATH' ) || exit;
  *                     a scaled copy. Off by default: it can't be undone.
  * - save_friction:    turn off dragging, the right-click menu and the
  *                     long-press save sheet on images, for visitors.
+ * - save_friction_scope: which images save friction covers: "all" (every
+ *                     image except logos, avatars, emoji and the like) or
+ *                     "common" (standard WordPress image blocks and a few
+ *                     popular gallery plugins). Sites saved before this
+ *                     setting existed don't have it stored, so they get "all".
  * - save_friction_selectors: extra CSS selectors for save friction.
  *
  * @return array<string, mixed>
@@ -37,6 +42,7 @@ function notfortraining_defaults() {
 		'strip_gps'               => true,
 		'delete_originals'        => false,
 		'save_friction'           => true,
+		'save_friction_scope'     => 'all',
 		'save_friction_selectors' => '',
 	);
 }
@@ -88,6 +94,10 @@ function notfortraining_sanitize_option( $key, $value ) {
 		return is_numeric( $value ) ? max( 0, (int) $value ) : $defaults['max_image_size'];
 	}
 
+	if ( 'save_friction_scope' === $key ) {
+		return is_string( $value ) && in_array( $value, notfortraining_save_friction_scopes(), true ) ? $value : $defaults['save_friction_scope'];
+	}
+
 	if ( 'save_friction_selectors' === $key ) {
 		return notfortraining_sanitize_selectors( $value );
 	}
@@ -106,6 +116,15 @@ function notfortraining_sanitize_option( $key, $value ) {
  */
 function notfortraining_robots_modes() {
 	return array( 'training', 'all', 'off' );
+}
+
+/**
+ * Allowed save_friction_scope values.
+ *
+ * @return string[]
+ */
+function notfortraining_save_friction_scopes() {
+	return array( 'all', 'common' );
 }
 
 /**
@@ -140,6 +159,9 @@ function notfortraining_sanitize_settings( $input ) {
 	$size                    = $input['max_image_size'] ?? null;
 	$size                    = ( is_int( $size ) || ( is_string( $size ) && ctype_digit( $size ) ) ) ? (int) $size : -1;
 	$clean['max_image_size'] = in_array( $size, notfortraining_image_size_choices(), true ) ? $size : $defaults['max_image_size'];
+
+	$scope                        = $input['save_friction_scope'] ?? '';
+	$clean['save_friction_scope'] = is_string( $scope ) && in_array( $scope, notfortraining_save_friction_scopes(), true ) ? $scope : $defaults['save_friction_scope'];
 
 	$clean['save_friction_selectors'] = notfortraining_sanitize_selectors( $input['save_friction_selectors'] ?? '' );
 

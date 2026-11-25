@@ -121,6 +121,7 @@ class NotForTraining_Test_Admin extends NotForTraining_TestCase {
 				'strip_gps'               => false,
 				'delete_originals'        => true,
 				'save_friction'           => true,
+				'save_friction_scope'     => 'all',
 				'save_friction_selectors' => '',
 			),
 			notfortraining_sanitize_settings(
